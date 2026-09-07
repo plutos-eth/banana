@@ -8,6 +8,10 @@ data/
 # rust
 target/
 
+# tauri build output: the permission schemas are regenerated from tauri.conf.json on every
+# build, so committing them would mean reviewing a 60 KB diff nobody wrote
+crates/app/gen/
+
 # node / vite
 node_modules/
 ui/dist/

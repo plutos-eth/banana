@@ -17,6 +17,13 @@ pub const CHAIN_ID: u64 = 4663;
 /// timestamps between sampled anchors (PLAN.md F2).
 pub const BLOCK_MS: u64 = 101;
 
+/// Block explorer for this chain, taken from the reference implementation.
+///
+/// Used only to build links the **user** clicks, which open in their own browser. The app
+/// never fetches from it: spec §3.1 and PLAN.md C1 keep every outbound request to the
+/// configured RPC endpoint, and the webview's CSP makes anything else impossible.
+pub const EXPLORER: &str = "https://robinhoodchain.blockscout.com";
+
 pub const PONS_FACTORY: Address = address!("0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e");
 pub const PONS_ROUTER: Address = address!("0xe33E9E479dF8802cb0866d5d05258bEc4cF62948");
 pub const PONS_DEPLOYER: Address = address!("0x3711ceA4feaDE896C913C68F01Eda97Cb06D1A42");

@@ -177,12 +177,16 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
         |r| r.get::<_, i64>(0),
     )? as u64;
 
+    // `Option<i64>`, because several of these columns are an arithmetic expression over a
+    // nullable one. `(SELECT max(block) FROM trades) - last_trade_block` is NULL on a store
+    // that has outcomes but no trades, and reading it as `i64` made the whole report fail
+    // rather than report an empty distribution.
     let col = |sql: &str| -> quarrel_store::Result<Vec<u64>> {
         let mut stmt = conn.prepare(sql)?;
         let v = stmt
-            .query_map([], |r| r.get::<_, i64>(0))?
+            .query_map([], |r| r.get::<_, Option<i64>>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(v.into_iter().map(|x| x.max(0) as u64).collect())
+        Ok(v.into_iter().flatten().map(|x| x.max(0) as u64).collect())
     };
 
     Ok(Distributions {

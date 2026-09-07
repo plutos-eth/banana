@@ -62,6 +62,12 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 # Cross-platform advisory file locks, for the per-database writer lock of PLAN.md C3.
 fs4 = "0.13"
 
+# Desktop shell. Only `app` may depend on these: `cargo test --workspace` for phases 1-4
+# must not need a GUI toolchain, and the cron/headless path in spec sec.10 must not either
+# (PLAN.md D13).
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

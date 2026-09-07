@@ -12,7 +12,7 @@
 //! row here, with unknowns where the data would be; dropping it would shrink the
 //! denominator for a reason that is about our decoder rather than about the token.
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use quarrel_core::features::{FeeRecipient, Pair, PitFeatures, Socials};
 use rusqlite::types::Value;
 
@@ -26,6 +26,11 @@ use crate::{Result, StoreError};
 pub struct Candidate {
     pub token: Address,
     pub launch_block: u64,
+    /// Carried for the detail drawer and its explorer links, never for a filter: nothing
+    /// in `EntryFilter` can name them, because `evaluate` only ever sees `features`.
+    pub curve: Address,
+    pub deployer: Address,
+    pub tx_hash: B256,
     /// Everything an entry filter is allowed to read. Point-in-time by construction.
     pub features: PitFeatures,
     pub outcome: Outcome,
@@ -78,7 +83,7 @@ const FROM: &str = "FROM launches l
      LEFT JOIN pit_features p ON p.token = l.token
      LEFT JOIN outcomes     o ON o.token = l.token";
 
-const COLUMNS: &str = "l.token, l.block, l.pair_token,
+const COLUMNS: &str = "l.token, l.block, l.pair_token, l.curve, l.tx_hash,
      e.name, e.symbol, e.description,
      e.twitter, e.website, e.telegram,
      e.exempt_wallets, e.dev_buy_bps, e.creator_tax_bps, e.creator_fee_recipient, l.deployer,
@@ -157,45 +162,60 @@ impl History {
         Ok(row)
     }
 
+    /// The newest `limit` launches, for the feed.
+    ///
+    /// Bounded in SQL rather than in Rust because the feed is a window on recent activity,
+    /// not a scan of the archive: a month of daily updates is ~750,000 launches and
+    /// hydrating all of them to show the last few hundred would make the view unusable
+    /// long before it became wrong.
+    pub fn recent_candidates(&self, limit: usize) -> Result<Vec<Candidate>> {
+        self.query_candidates(None, Some(limit))
+    }
+
     /// Every launch in the store, narrowed by an optional SQL pre-filter.
     ///
     /// The pre-filter never decides: it is sound by construction (see [`crate::sql`]) and
     /// the caller's Rust evaluator still runs over everything returned.
     pub fn candidates(&self, prefilter: Option<&SqlFilter>) -> Result<Vec<Candidate>> {
+        self.query_candidates(prefilter, None)
+    }
+
+    /// One launch by token address, for the detail drawer.
+    ///
+    /// A targeted lookup rather than a scan. The first version of the drawer read every
+    /// candidate and searched in Rust, which is both slow and wrong: `LIMIT usize::MAX`
+    /// does not fit in the signed integer SQLite binds, so it failed outright.
+    pub fn candidate(&self, token: Address) -> Result<Option<Candidate>> {
+        let sql = format!("SELECT {COLUMNS} {FROM} WHERE l.token = ?1");
+        let mut stmt = self.conn().prepare(&sql)?;
+        let mut rows = stmt.query([crate::types::addr_key(token)])?;
+        match rows.next()? {
+            None => Ok(None),
+            Some(r) => Ok(Some(raw_from_row(r)?.hydrate()?)),
+        }
+    }
+
+    fn query_candidates(
+        &self,
+        prefilter: Option<&SqlFilter>,
+        newest: Option<usize>,
+    ) -> Result<Vec<Candidate>> {
         let (clause, params): (&str, &[Value]) = match prefilter {
             Some(f) => (f.where_clause.as_str(), f.params.as_slice()),
             None => ("1", &[]),
         };
-        let sql = format!("SELECT {COLUMNS} {FROM} WHERE {clause} ORDER BY l.block, l.token");
+        // Newest-first with a cap for the feed; oldest-first and complete for the Lab,
+        // whose funnel has to see the whole universe to be able to report a denominator.
+        let order = match newest {
+            Some(n) => format!("ORDER BY l.block DESC, l.token DESC LIMIT {n}"),
+            None => "ORDER BY l.block, l.token".to_string(),
+        };
+        let sql = format!("SELECT {COLUMNS} {FROM} WHERE {clause} {order}");
         let mut stmt = self.conn().prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| {
-            Ok(RawCandidate {
-                token: r.get(0)?,
-                block: r.get(1)?,
-                pair_token: r.get(2)?,
-                name: r.get(3)?,
-                symbol: r.get(4)?,
-                description: r.get(5)?,
-                twitter: r.get(6)?,
-                website: r.get(7)?,
-                telegram: r.get(8)?,
-                exempt_wallets: r.get(9)?,
-                dev_buy_bps: r.get(10)?,
-                creator_tax_bps: r.get(11)?,
-                fee_recipient: r.get(12)?,
-                deployer: r.get(13)?,
-                deployer_launches: r.get(14)?,
-                deployer_graduations: r.get(15)?,
-                twins: r.get(16)?,
-                depth: r.get(17)?,
-                entry_rule: r.get(18)?,
-                entry_price: r.get(19)?,
-                max_multiple_bps: r.get(20)?,
-                mult_5m: r.get(21)?,
-                mult_30m: r.get(22)?,
-                migrated: r.get(23)?,
-                died: r.get(24)?,
-                post_entry_trades: r.get(25)?,
+            raw_from_row(r).map_err(|e| match e {
+                StoreError::Sqlite(e) => e,
+                other => rusqlite::Error::ToSqlConversionFailure(Box::new(other)),
             })
         })?;
 
@@ -207,11 +227,47 @@ impl History {
     }
 }
 
+/// One row of the shared `COLUMNS` list.
+fn raw_from_row(r: &rusqlite::Row<'_>) -> Result<RawCandidate> {
+    Ok(RawCandidate {
+        token: r.get(0)?,
+        block: r.get(1)?,
+        pair_token: r.get(2)?,
+        curve: r.get(3)?,
+        tx_hash: r.get(4)?,
+        name: r.get(5)?,
+        symbol: r.get(6)?,
+        description: r.get(7)?,
+        twitter: r.get(8)?,
+        website: r.get(9)?,
+        telegram: r.get(10)?,
+        exempt_wallets: r.get(11)?,
+        dev_buy_bps: r.get(12)?,
+        creator_tax_bps: r.get(13)?,
+        fee_recipient: r.get(14)?,
+        deployer: r.get(15)?,
+        deployer_launches: r.get(16)?,
+        deployer_graduations: r.get(17)?,
+        twins: r.get(18)?,
+        depth: r.get(19)?,
+        entry_rule: r.get(20)?,
+        entry_price: r.get(21)?,
+        max_multiple_bps: r.get(22)?,
+        mult_5m: r.get(23)?,
+        mult_30m: r.get(24)?,
+        migrated: r.get(25)?,
+        died: r.get(26)?,
+        post_entry_trades: r.get(27)?,
+    })
+}
+
 /// The raw column tuple, kept separate so hydration is one readable function.
 struct RawCandidate {
     token: String,
     block: u64,
     pair_token: String,
+    curve: String,
+    tx_hash: String,
     name: Option<String>,
     symbol: Option<String>,
     description: Option<String>,
@@ -289,6 +345,12 @@ impl RawCandidate {
         Ok(Candidate {
             token,
             launch_block: self.block,
+            curve: parse_addr(&self.curve)?,
+            deployer,
+            tx_hash: self
+                .tx_hash
+                .parse()
+                .map_err(|_| StoreError::Corrupt(format!("not a hash: {}", self.tx_hash)))?,
             features,
             outcome: Outcome {
                 entry_rule: self
