@@ -28,8 +28,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "guard", rename_all = "snake_case")]
 pub enum Refused {
-    #[error("not armed: the session has not been armed for live trading")]
-    NotArmed,
     #[error("size {requested} wei exceeds the per-buy cap of {cap} wei")]
     SizePerBuy { requested: U256, cap: U256 },
     #[error(
@@ -90,30 +88,22 @@ pub struct Held {
 #[derive(Debug, Clone)]
 pub struct Budget {
     limits: LiveGuards,
-    armed: bool,
     spent: U256,
     open: Vec<Held>,
 }
 
 impl Budget {
-    /// A session that cannot spend until it is armed (spec §3.2, §7.3).
+    /// A fresh session with nothing spent and nothing open.
+    ///
+    /// There is no "armed" flag here. What stops a TEST session spending is that it holds
+    /// a [`crate::NoSigner`] and therefore cannot produce a signature at all — a stronger
+    /// guarantee than a boolean, and the one the product actually relies on.
     pub fn new(limits: LiveGuards) -> Self {
         Self {
             limits,
-            armed: false,
             spent: U256::ZERO,
             open: Vec::new(),
         }
-    }
-
-    /// Arm the session. Only [`crate::arm`] should call this, and only after the user has
-    /// seen the address, the balance and the limits and typed the phrase.
-    pub fn arm(&mut self) {
-        self.armed = true;
-    }
-
-    pub fn is_armed(&self) -> bool {
-        self.armed
     }
 
     pub fn spent(&self) -> U256 {
@@ -143,9 +133,6 @@ impl Budget {
         wei: U256,
         balance: U256,
     ) -> Result<Spend, Box<Refused>> {
-        if !self.armed {
-            return Err(Box::new(Refused::NotArmed));
-        }
         if wei > self.limits.size_per_buy_wei {
             return Err(Box::new(Refused::SizePerBuy {
                 requested: wei,
@@ -235,25 +222,13 @@ mod tests {
     }
 
     /// The defaults of §7.3: 0.01 per buy, 0.01 position cap, 0.05 session, 3 open.
-    fn armed() -> Budget {
-        let mut b = Budget::new(LiveGuards::default());
-        b.arm();
-        b
+    fn budget() -> Budget {
+        Budget::new(LiveGuards::default())
     }
 
     #[test]
-    fn a_session_cannot_spend_until_it_is_armed() {
-        let b = Budget::new(LiveGuards::default());
-        assert!(!b.is_armed());
-        assert_eq!(
-            *b.authorise(token(1), wei(1), wei(1000)).unwrap_err(),
-            Refused::NotArmed
-        );
-    }
-
-    #[test]
-    fn an_armed_session_authorises_a_buy_within_every_limit() {
-        let b = armed();
+    fn a_session_authorises_a_buy_within_every_limit() {
+        let b = budget();
         let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
         assert_eq!(s.wei(), wei(1));
         assert_eq!(s.token(), token(1));
@@ -263,7 +238,7 @@ mod tests {
 
     #[test]
     fn a_buy_larger_than_the_per_buy_cap_is_refused_with_both_numbers() {
-        let b = armed();
+        let b = budget();
         let e = *b.authorise(token(1), wei(2), wei(1000)).unwrap_err();
         assert!(matches!(e, Refused::SizePerBuy { .. }));
         // Spec §3.4: the refusal names the value and the threshold.
@@ -276,14 +251,14 @@ mod tests {
     fn a_buy_exactly_at_the_cap_is_allowed() {
         // The boundary matters: a guard that refuses its own documented default would
         // make the shipped configuration unusable.
-        assert!(armed().authorise(token(1), wei(1), wei(1000)).is_ok());
+        assert!(budget().authorise(token(1), wei(1), wei(1000)).is_ok());
     }
 
     // --- guard 2: position cap ------------------------------------------------------
 
     #[test]
     fn adding_to_a_position_past_its_cap_is_refused() {
-        let mut b = armed();
+        let mut b = budget();
         let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
         b.commit(s);
         // The position cap is 0.01 and the position already holds 0.01.
@@ -298,7 +273,6 @@ mod tests {
             position_cap_wei: wei(3),
             ..LiveGuards::default()
         });
-        b.arm();
         for _ in 0..3 {
             let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
             b.commit(s);
@@ -311,7 +285,7 @@ mod tests {
 
     #[test]
     fn once_the_session_budget_is_spent_nothing_fires_regardless_of_signal() {
-        let mut b = armed();
+        let mut b = budget();
         // Five buys of 0.01 exhaust the 0.05 default, across five different tokens so
         // neither the position cap nor the open count is what stops it.
         let mut b = {
@@ -333,7 +307,7 @@ mod tests {
     fn selling_does_not_refund_the_session_budget() {
         // The budget limits what a session risks, not what it holds. Refunding on a sale
         // would let a losing afternoon churn forever.
-        let mut b = armed();
+        let mut b = budget();
         let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
         b.commit(s);
         let after_buy = b.remaining();
@@ -346,7 +320,7 @@ mod tests {
 
     #[test]
     fn a_fourth_position_is_refused_at_the_default_of_three() {
-        let mut b = armed();
+        let mut b = budget();
         for i in 1..=3 {
             let s = b.authorise(token(i), wei(1), wei(1000)).unwrap();
             b.commit(s);
@@ -363,7 +337,6 @@ mod tests {
             max_open_positions: 1,
             ..LiveGuards::default()
         });
-        b.arm();
         let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
         b.commit(s);
         // At the position limit, but this is the same token, so the count does not apply.
@@ -377,7 +350,7 @@ mod tests {
 
     #[test]
     fn closing_a_position_frees_a_slot() {
-        let mut b = armed();
+        let mut b = budget();
         for i in 1..=3 {
             let s = b.authorise(token(i), wei(1), wei(1000)).unwrap();
             b.commit(s);
@@ -390,7 +363,7 @@ mod tests {
 
     #[test]
     fn a_buy_larger_than_the_balance_is_refused() {
-        let b = armed();
+        let b = budget();
         let e = *b.authorise(token(1), wei(1), U256::ZERO).unwrap_err();
         assert!(matches!(e, Refused::InsufficientBalance { .. }), "{e}");
     }
@@ -399,7 +372,7 @@ mod tests {
     fn a_policy_limit_is_reported_before_an_empty_wallet() {
         // Both would refuse. The user's own configuration is the more useful answer,
         // because it is the one they can change.
-        let b = armed();
+        let b = budget();
         let e = *b.authorise(token(1), wei(50), U256::ZERO).unwrap_err();
         assert!(matches!(e, Refused::SizePerBuy { .. }), "{e}");
     }
@@ -411,7 +384,7 @@ mod tests {
         // Enforced by the type: `commit` takes the `Spend` by value and `Spend` is not
         // `Clone`, so there is no way to spend one authorisation on two buys. This test
         // documents the property; the compiler is what enforces it.
-        let mut b = armed();
+        let mut b = budget();
         let s = b.authorise(token(1), wei(1), wei(1000)).unwrap();
         b.commit(s);
         // `b.commit(s)` here would not compile: `s` has been moved.
@@ -430,7 +403,6 @@ mod tests {
     #[test]
     fn every_refusal_names_a_number_the_user_can_act_on() {
         let cases = [
-            Refused::NotArmed,
             Refused::SizePerBuy {
                 requested: wei(2),
                 cap: wei(1),
@@ -454,13 +426,10 @@ mod tests {
         for c in cases {
             let s = c.to_string();
             assert!(!s.is_empty());
-            // Every one but "not armed" quotes at least one figure.
-            if !matches!(c, Refused::NotArmed) {
-                assert!(
-                    s.chars().any(|ch| ch.is_ascii_digit()),
-                    "a refusal with no number in it: {s}"
-                );
-            }
+            assert!(
+                s.chars().any(|ch| ch.is_ascii_digit()),
+                "a refusal with no number in it: {s}"
+            );
         }
     }
 }

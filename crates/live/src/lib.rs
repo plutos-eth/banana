@@ -17,7 +17,7 @@
 
 #![forbid(unsafe_code)]
 
-pub mod arm;
+pub mod briefing;
 pub mod entry;
 pub mod exits;
 pub mod guards;
@@ -25,10 +25,10 @@ pub mod route;
 pub mod session;
 pub mod signer;
 
-pub use arm::{ARM_PHRASE, Briefing, phrase_arms};
+pub use briefing::Briefing;
 pub use entry::{Achieved, Schedule, Step, TaxReport};
 pub use exits::{Exit, Mark};
 pub use guards::{Budget, Refused, Spend};
 pub use route::{PoolKey, Route};
-pub use session::{Armed, Mode, Session, SessionError};
-pub use signer::{EnvSigner, NoSigner, Signer, SignerError, TxRequest};
+pub use session::{Mode, Session, SessionError};
+pub use signer::{KeySigner, NoSigner, Signer, SignerError, TxRequest, keystore};

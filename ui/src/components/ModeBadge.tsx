@@ -15,11 +15,7 @@ export function ModeBadge({ status }: { status: Status | null }) {
   }
   // Keyed on `can_spend` rather than on the label, so a mode added later renders as the
   // careful colour until somebody deliberately says otherwise.
-  const cls = status.can_spend
-    ? "mode--live"
-    : status.mode === "dry_run"
-      ? "mode--dry"
-      : "mode--armed";
+  const cls = status.can_spend ? "mode--live" : status.mode ? "mode--dry" : "mode--unknown";
   return (
     <span
       className={`mode ${cls}`}

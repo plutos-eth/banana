@@ -21,6 +21,7 @@ import { IndexView } from "./views/IndexView";
 import { Rules } from "./views/Rules";
 import { StatusView } from "./views/StatusView";
 import { Onboarding } from "./views/Onboarding";
+import { ChooseMode } from "./views/ChooseMode";
 
 export function App() {
   const { view, setView, status, refreshStatus, loadStrategy, error, setError } = useApp();
@@ -36,6 +37,8 @@ export function App() {
       if (e.target instanceof HTMLElement && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
         return;
       }
+      // Not while a decision screen is up: there is nothing to switch to yet.
+      if (useApp.getState().status?.mode == null) return;
       const hit = VIEWS.find((v) => v.key === e.key);
       if (hit) {
         e.preventDefault();
@@ -46,8 +49,12 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setView]);
 
-  // First run: no saved strategy means the questionnaire, which fills the same
-  // `StrategyConfig` the rest of the app uses and introduces no new entity (spec §8).
+  // The mode comes first: nothing else should be reachable before the user has said
+  // whether this session can spend money.
+  const choosing = status !== null && status.mode === null;
+
+  // Then, on a first run, the questionnaire — which fills the same `StrategyConfig` the
+  // rest of the app uses and introduces no new entity (spec §8).
   const onboarding = status !== null && !status.has_saved_strategy;
 
   return (
@@ -69,24 +76,31 @@ export function App() {
       </header>
 
       <div className="app__body">
-        <nav className="sidebar" aria-label="views">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              className={`sidebar__item${view === v.id ? " is-active" : ""}`}
-              onClick={() => setView(v.id)}
-            >
-              <span>{v.label}</span>
-              <kbd className="kbd">{v.key}</kbd>
-            </button>
-          ))}
-          <div className="sidebar__spacer" />
-          <ShortcutLegend />
-        </nav>
+        {/* The navigation is hidden until the session has a mode and a strategy. A
+            sidebar you can click during a decision screen reads as a decision you can
+            skip, and neither of these is skippable. */}
+        {!choosing && !onboarding && (
+          <nav className="sidebar" aria-label="views">
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className={`sidebar__item${view === v.id ? " is-active" : ""}`}
+                onClick={() => setView(v.id)}
+              >
+                <span>{v.label}</span>
+                <kbd className="kbd">{v.key}</kbd>
+              </button>
+            ))}
+            <div className="sidebar__spacer" />
+            <ShortcutLegend />
+          </nav>
+        )}
 
         <main className="content">
-          {onboarding ? (
+          {choosing ? (
+            <ChooseMode />
+          ) : onboarding ? (
             <Onboarding />
           ) : (
             <>

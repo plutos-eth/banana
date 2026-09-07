@@ -9,30 +9,26 @@
  */
 
 import { useEffect, useState } from "react";
-import { api, hasBackend, ARM_PHRASE, type Status } from "../ipc";
+import { api, hasBackend, type Status } from "../ipc";
 import { bytes, count, hours } from "../format";
 import { useApp } from "../store";
 import { Empty } from "../components/Empty";
 
 export function StatusView() {
-  const { status, refreshStatus, setError } = useApp();
-  const [gate, setGate] = useState<Status | null>(null);
+  const { status, refreshStatus } = useApp();
 
+  // One source, polled: a second fetch into local state was a duplicate that could
+  // disagree with the badge in the top bar.
   useEffect(() => {
     void refreshStatus();
     const t = setInterval(() => void refreshStatus(), 4000);
     return () => clearInterval(t);
   }, [refreshStatus]);
 
-  useEffect(() => {
-    if (!hasBackend()) return;
-    api.status().then(setGate).catch(setError);
-  }, [setError]);
-
   if (!hasBackend()) {
     return <Empty title="No backend" note="Run the desktop app." />;
   }
-  const s = status ?? gate;
+  const s = status;
   if (!s) return <Empty title="Connecting" note="Reading state from the backend." />;
 
   return (
@@ -47,11 +43,15 @@ export function StatusView() {
           <div className={`headline__value ${s.can_spend ? "is-live" : "is-dry"}`}>
             {s.mode_label}
           </div>
-          <div className="headline__label">{s.engine}</div>
+          <div className="headline__label">
+            {s.engine}
+            <br />
+            <span className="note">Restart the application to change mode.</span>
+          </div>
         </div>
       </section>
 
-      <Arm status={s} />
+      <Wallet status={s} />
 
       <section className="panel">
         <h2 className="panel__title">Feed health</h2>
@@ -124,75 +124,96 @@ export function StatusView() {
 }
 
 /**
- * Arming, and the three states it sits between (PLAN.md C7).
+ * The wallet, set from inside the application rather than from a file the user has to find.
  *
- * A dry-run process shows why it cannot be armed rather than a disabled button with no
- * explanation: the answer is "relaunch with --live", and a user who cannot see that will
- * assume the feature is broken.
+ * The key goes in and never comes back out: what the interface can read is the address it
+ * derives. A screenshot of this panel, or a screen share while it is open, leaks nothing
+ * that can spend money.
+ *
+ * It is stored in plaintext at `<data dir>/wallet.key`, which is the honest trade-off and
+ * is said here rather than buried in a document — anything that can read that file can
+ * take the funds, and the wallet should hold only what you would accept losing.
  */
-function Arm({ status }: { status: Status }) {
-  const setError = useApp((st) => st.setError);
-  const refreshStatus = useApp((st) => st.refreshStatus);
+function Wallet({ status }: { status: Status }) {
+  const { refreshStatus, setError } = useApp();
   const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  if (status.mode === "dry_run") {
-    return (
-      <section className="panel">
-        <h2 className="panel__title">Arming</h2>
-        <p className="note">{status.engine}</p>
-        <p className="note">
-          <span className="mono">--live</span> is a launch flag, never a button. That is
-          what makes "real money moves only behind an explicit flag" a property of this
-          process rather than of a check somewhere inside it.
-        </p>
-      </section>
-    );
-  }
-
-  if (status.mode === "live_armed") {
-    return (
-      <section className="panel">
-        <h2 className="panel__title">Arming</h2>
-        <div className="banner banner--error">
-          Armed. Entries will be signed and sent, up to the session budget. Close the
-          application to stop.
-        </div>
-      </section>
-    );
-  }
+  const save = () => {
+    setBusy(true);
+    api
+      .saveKey(typed)
+      .then(() => {
+        setTyped("");
+        void refreshStatus();
+      })
+      .catch((e) => setError(e))
+      .finally(() => setBusy(false));
+  };
 
   return (
     <section className="panel">
-      <h2 className="panel__title">Arming</h2>
-      <div className="banner banner--warn">{status.engine}</div>
-      <div className="rule">
-        <input
-          className="input"
-          placeholder={`type ${ARM_PHRASE} to arm`}
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          spellCheck={false}
-        />
-        <button
-          type="button"
-          className="btn btn--primary"
-          onClick={() => {
-            api
-              .arm(typed)
-              .then(() => {
-                setTyped("");
-                void refreshStatus();
-              })
-              .catch((e) => setError(e));
-          }}
-        >
-          arm
-        </button>
-      </div>
-      <p className="note">
-        The phrase is exact. Anything else leaves the session unarmed, which is the state
-        it should stay in unless you meant otherwise.
-      </p>
+      <h2 className="panel__title">Wallet</h2>
+
+      {status.wallet ? (
+        <>
+          <table className="kv">
+            <tbody>
+              <tr>
+                <th>address</th>
+                <td className="mono is-wrap">{status.wallet}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="note">
+            Stored in plaintext beside the store. Anything that can read that file can take
+            the funds, so keep only what you would accept losing in this wallet.
+          </p>
+          <button
+            type="button"
+            className="btn btn--quiet"
+            onClick={() => {
+              api
+                .clearKey()
+                .then(() => void refreshStatus())
+                .catch((e) => setError(e));
+            }}
+          >
+            remove key
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="note">
+            No wallet set. LIVE mode needs one; TEST does not and never loads a key at all.
+          </p>
+          <div className="rule">
+            <input
+              className="input mono"
+              type="password"
+              placeholder="paste a private key (0x… or bare hex)"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={busy || typed.trim().length === 0}
+              onClick={save}
+            >
+              {busy ? "checking…" : "save"}
+            </button>
+          </div>
+          <p className="note">
+            It is checked before it is stored, so a mistyped key is refused here rather than
+            the first time an order would have fired. It is written in plaintext to
+            <span className="mono"> wallet.key</span> beside the store, and it is never read
+            back into this window — only the address it derives is.
+          </p>
+        </>
+      )}
     </section>
   );
 }

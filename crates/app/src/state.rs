@@ -18,50 +18,9 @@ use quarrel_store::{History, Lock};
 
 /// Whether real money can move. Always visible in the UI (spec §3.2, §8 view 6).
 ///
-/// Three states, not two, because PLAN.md C7 established that `--live` and `arm` are
-/// different gates and conflating them is how "armed" gets mistaken for "live":
-///
-/// * `--live` is a **process launch flag**. Without it a process can never spend; it has
-///   to be relaunched. That is what "never a button" means.
-/// * `arm` is typed **inside** an already-live process, once, after the briefing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Mode {
-    /// Launched without `--live`. Holds no key and cannot be armed at any price.
-    DryRun,
-    /// Launched with `--live` but not yet armed. Still cannot spend.
-    LiveNotArmed,
-    /// Armed. Real money moves.
-    LiveArmed,
-}
-
-impl Mode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Mode::DryRun => "DRY RUN",
-            Mode::LiveNotArmed => "LIVE — NOT ARMED",
-            Mode::LiveArmed => "LIVE — ARMED",
-        }
-    }
-
-    /// The only state in which a transaction can be signed.
-    pub fn can_spend(self) -> bool {
-        matches!(self, Mode::LiveArmed)
-    }
-
-    /// What the user is told about this state, in the terms C7 asks for.
-    pub fn explain(self) -> &'static str {
-        match self {
-            Mode::DryRun => {
-                "Everything runs and nothing can be signed: this process holds no key.                  Relaunch with --live to be able to arm."
-            }
-            Mode::LiveNotArmed => {
-                "Launched with --live, so a key is loaded, but nothing fires until you                  read the briefing and type the arm phrase."
-            }
-            Mode::LiveArmed => "Armed. Entries will be signed and sent, inside the session budget.",
-        }
-    }
-}
+/// Re-exported from `quarrel-live` rather than defined again here: the mode the UI shows
+/// and the mode the executor obeys have to be one type, or they can disagree.
+pub use quarrel_live::Mode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -100,12 +59,13 @@ pub struct AppState {
     strategy: Mutex<StrategyConfig>,
     /// Set for the duration of an index, so a second one is refused rather than queued.
     indexing: AtomicBool,
-    mode: Mutex<Mode>,
+    /// `None` until the startup screen has been answered. Set once, then fixed.
+    mode: Mutex<Option<Mode>>,
 }
 
 impl AppState {
-    /// `live` comes from the `--live` launch flag and from nowhere else.
-    pub fn new(data_dir: impl AsRef<Path>, live: bool) -> Self {
+    /// A process with no mode yet. The user picks one on the startup screen.
+    pub fn new(data_dir: impl AsRef<Path>) -> Self {
         let data_dir = data_dir.as_ref().to_path_buf();
         let strategy = load_strategy(&data_dir).unwrap_or_default();
         Self {
@@ -113,13 +73,8 @@ impl AppState {
             history: Mutex::new(None),
             strategy: Mutex::new(strategy),
             indexing: AtomicBool::new(false),
-            // Decided at launch and never afterwards: a process without `--live` cannot
-            // be talked into being one with it.
-            mode: Mutex::new(if live {
-                Mode::LiveNotArmed
-            } else {
-                Mode::DryRun
-            }),
+            // No mode until the user chooses one, and no way back afterwards.
+            mode: Mutex::new(None),
         }
     }
 
@@ -135,32 +90,75 @@ impl AppState {
         self.data_dir.join("strategy.json")
     }
 
-    pub fn mode(&self) -> Mode {
+    /// The chosen mode, or `None` while the startup screen is still showing.
+    pub fn mode(&self) -> Option<Mode> {
         *self.mode.lock().expect("mode lock")
     }
 
-    /// Arm a live process. Refuses in dry run, which is the C7 rule made mechanical.
+    /// Choose TEST or LIVE. Once, for the life of the process.
     ///
-    /// Returns what the user should be shown: either the new mode, or why not.
-    pub fn arm(&self, typed: &str) -> Result<Mode> {
+    /// Refusing a second choice is the point: a session that could be switched to LIVE
+    /// while running is a session that can start spending money it was not started to
+    /// spend. Changing your mind means restarting, which costs a few seconds and removes
+    /// a whole class of accident.
+    ///
+    /// Choosing LIVE with no key configured fails here rather than later, so the user
+    /// finds out before they are watching a feed that will never fire.
+    pub fn choose_mode(&self, wanted: Mode) -> Result<Mode> {
         let mut mode = self.mode.lock().expect("mode lock");
-        match *mode {
-            Mode::DryRun => Err(AppError::Refused(
-                "this process was launched without --live and cannot be armed. Close it                  and relaunch with --live if you mean to trade."
-                    .into(),
-            )),
-            Mode::LiveArmed => Ok(Mode::LiveArmed),
-            Mode::LiveNotArmed => {
-                if !quarrel_live::phrase_arms(typed) {
-                    return Err(AppError::Refused(format!(
-                        "not armed: the phrase is `{}` and nothing else",
-                        quarrel_live::ARM_PHRASE
-                    )));
-                }
-                *mode = Mode::LiveArmed;
-                Ok(Mode::LiveArmed)
-            }
+        if let Some(current) = *mode {
+            return if current == wanted {
+                Ok(current)
+            } else {
+                Err(AppError::Refused(format!(
+                    "this session is already running in {}. Restart to change mode.",
+                    current.label()
+                )))
+            };
         }
+        if wanted == Mode::Live {
+            // Constructing a live session is what reads the key; the error it returns
+            // names what is missing.
+            quarrel_live::Session::live(self.strategy().live_guards, &self.data_dir)
+                .map_err(|e| AppError::Refused(e.to_string()))?;
+        }
+        *mode = Some(wanted);
+        Ok(wanted)
+    }
+
+    /// The wallet the saved key derives, or `None` when there is not one.
+    ///
+    /// An address, never the key: this is what crosses the IPC boundary, so a screenshot
+    /// or a screen share cannot leak the thing that spends the money.
+    pub fn wallet(&self) -> Option<alloy_primitives::Address> {
+        quarrel_live::keystore::address(&self.data_dir)
+    }
+
+    /// Store a key pasted into Settings, and return the address it derives.
+    ///
+    /// Refused while a LIVE session is running: the session already holds the old key in
+    /// memory, so writing a new one would leave the file and the running wallet
+    /// disagreeing about which account is being spent from.
+    pub fn save_key(&self, raw: &str) -> Result<alloy_primitives::Address> {
+        if self.mode() == Some(Mode::Live) {
+            return Err(AppError::Refused(
+                "this session is already running in LIVE with the current key. Restart \
+                 before changing wallets."
+                    .into(),
+            ));
+        }
+        quarrel_live::keystore::save(&self.data_dir, raw)
+            .map_err(|e| AppError::Refused(e.to_string()))
+    }
+
+    /// Forget the stored key.
+    pub fn clear_key(&self) -> Result<()> {
+        if self.mode() == Some(Mode::Live) {
+            return Err(AppError::Refused(
+                "this session is running in LIVE with this key. Restart before removing it.".into(),
+            ));
+        }
+        quarrel_live::keystore::clear(&self.data_dir).map_err(|e| AppError::Refused(e.to_string()))
     }
 
     /// True when a `strategy.json` already exists, which is what decides whether the
@@ -277,7 +275,7 @@ mod tests {
     #[test]
     fn a_fresh_install_has_no_saved_strategy_and_uses_the_baseline() {
         let d = temp_dir("fresh");
-        let s = AppState::new(&d, false);
+        let s = AppState::new(&d);
         assert!(!s.has_saved_strategy(), "this is what triggers onboarding");
         assert_eq!(s.strategy(), StrategyConfig::default());
     }
@@ -285,7 +283,7 @@ mod tests {
     #[test]
     fn a_saved_strategy_round_trips_through_the_file_the_sniper_will_read() {
         let d = temp_dir("save");
-        let s = AppState::new(&d, false);
+        let s = AppState::new(&d);
         let mut cfg = StrategyConfig::default();
         cfg.entry_model.max_tax_bps = 175;
         s.save_strategy(&cfg).unwrap();
@@ -293,14 +291,14 @@ mod tests {
         assert!(s.has_saved_strategy());
         assert_eq!(s.strategy().entry_model.max_tax_bps, 175);
         // Reopening reads the same file, with no translation step (spec §7.2).
-        assert_eq!(AppState::new(&d, false).strategy(), cfg);
+        assert_eq!(AppState::new(&d).strategy(), cfg);
     }
 
     #[test]
     fn an_unparseable_strategy_falls_back_loudly_rather_than_silently() {
         let d = temp_dir("broken");
         std::fs::write(d.join("strategy.json"), "{ not json").unwrap();
-        let s = AppState::new(&d, false);
+        let s = AppState::new(&d);
         assert_eq!(s.strategy(), StrategyConfig::default());
         // The file is left alone: overwriting the user's config on a parse error would
         // destroy the thing they need in order to fix it.
@@ -310,7 +308,7 @@ mod tests {
     #[test]
     fn a_missing_store_is_an_error_not_an_empty_database() {
         let d = temp_dir("nostore");
-        let s = AppState::new(&d, false);
+        let s = AppState::new(&d);
         let e = s.with_history(|_| Ok(()));
         assert!(matches!(e, Err(AppError::NoStore(_))));
         // And no file was created by asking.
@@ -320,7 +318,7 @@ mod tests {
     #[test]
     fn a_second_index_is_refused_while_the_first_holds_the_lock() {
         let d = temp_dir("busy");
-        let s = AppState::new(&d, false);
+        let s = AppState::new(&d);
         let guard = s.begin_index().unwrap();
         assert!(s.is_indexing());
         assert!(matches!(s.begin_index(), Err(AppError::IndexBusy)));
@@ -330,52 +328,96 @@ mod tests {
     }
 
     #[test]
-    fn a_process_without_the_flag_is_dry_run_and_says_so() {
+    fn a_fresh_process_has_no_mode_until_the_user_picks_one() {
         let d = temp_dir("mode");
-        let s = AppState::new(&d, false);
-        assert_eq!(s.mode(), Mode::DryRun);
-        assert!(!s.mode().can_spend());
-        assert_eq!(Mode::DryRun.label(), "DRY RUN");
-        assert!(s.mode().explain().contains("holds no key"));
-    }
-
-    /// PLAN.md C7: the two gates are different, and a dry-run process cannot cross either.
-    #[test]
-    fn a_dry_run_process_cannot_be_armed_at_any_price() {
-        let d = temp_dir("armdry");
-        let s = AppState::new(&d, false);
-        let e = s.arm("arm").unwrap_err();
-        assert!(matches!(e, AppError::Refused(_)));
-        assert!(e.to_string().contains("relaunch with --live"), "{e}");
-        assert_eq!(s.mode(), Mode::DryRun, "and it stays dry run");
+        let s = AppState::new(&d);
+        assert_eq!(s.mode(), None, "the startup screen keys on this");
     }
 
     #[test]
-    fn a_live_process_starts_unarmed_and_cannot_spend_until_the_phrase() {
-        let d = temp_dir("armlive");
-        let s = AppState::new(&d, true);
-        assert_eq!(s.mode(), Mode::LiveNotArmed);
-        assert!(!s.mode().can_spend(), "a key is loaded but nothing fires");
+    fn choosing_test_gives_a_session_that_holds_no_key() {
+        let d = temp_dir("modetest");
+        let s = AppState::new(&d);
+        assert_eq!(s.choose_mode(Mode::Test).unwrap(), Mode::Test);
+        assert_eq!(s.mode(), Some(Mode::Test));
+        assert!(!Mode::Test.can_spend());
+        assert!(Mode::Test.explain().contains("holds no key"));
+    }
 
-        for wrong in ["", "y", "yes", "ARM", "arm it"] {
-            assert!(s.arm(wrong).is_err(), "{wrong:?} armed the session");
-            assert_eq!(s.mode(), Mode::LiveNotArmed);
+    /// Changing mode means restarting, which removes a whole class of accident.
+    #[test]
+    fn the_mode_cannot_be_changed_once_it_is_chosen() {
+        let d = temp_dir("modeonce");
+        let s = AppState::new(&d);
+        s.choose_mode(Mode::Test).unwrap();
+
+        // Choosing the same thing again is not an error; it is already done.
+        assert_eq!(s.choose_mode(Mode::Test).unwrap(), Mode::Test);
+
+        let e = s.choose_mode(Mode::Live).unwrap_err();
+        assert!(e.to_string().contains("Restart to change mode"), "{e}");
+        assert_eq!(s.mode(), Some(Mode::Test), "and it stays in TEST");
+    }
+
+    #[test]
+    fn choosing_live_without_a_key_fails_at_the_choice_rather_than_later() {
+        // Better here than in front of a feed that will never fire.
+        //
+        // The question is asked through `quarrel-live` rather than by naming the variable,
+        // because `scripts/check-trust-boundary.ps1` fails on that literal anywhere but
+        // that crate — and the check is deliberately blunt: one with exceptions is one you
+        // can talk your way past. It caught this line when it was written the other way.
+        if quarrel_live::keystore::env_key_present() {
+            return; // a machine with a key configured cannot exercise this
         }
+        let d = temp_dir("modelive");
+        let s = AppState::new(&d);
+        let e = s.choose_mode(Mode::Live).unwrap_err();
+        assert!(e.to_string().contains("Add one in Settings"), "{e}");
+        assert_eq!(s.mode(), None, "a failed choice leaves the mode unchosen");
+    }
 
-        assert_eq!(s.arm("arm").unwrap(), Mode::LiveArmed);
-        assert!(s.mode().can_spend());
-        // Arming twice is not an error; it is already done.
-        assert_eq!(s.arm("arm").unwrap(), Mode::LiveArmed);
+    /// The friendly path: a key set from inside the application, never from a file the
+    /// user has to find.
+    #[test]
+    fn a_key_saved_in_settings_makes_live_available_and_never_leaves_the_backend() {
+        let d = temp_dir("wallet");
+        let s = AppState::new(&d);
+        assert_eq!(s.wallet(), None);
+
+        // The published Hardhat development account. Public, and worthless.
+        let key = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        let addr = s.save_key(key).unwrap();
+        assert_eq!(
+            addr,
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+                .parse::<alloy_primitives::Address>()
+                .unwrap()
+        );
+        assert_eq!(s.wallet(), Some(addr));
+
+        // With a wallet configured, LIVE is now a choice that can succeed.
+        assert_eq!(s.choose_mode(Mode::Live).unwrap(), Mode::Live);
+
+        // And once live, the wallet cannot be swapped underneath the running session.
+        assert!(s.save_key(key).is_err());
+        assert!(s.clear_key().is_err());
     }
 
     #[test]
-    fn each_mode_says_what_it_means_rather_than_only_naming_itself() {
-        for m in [Mode::DryRun, Mode::LiveNotArmed, Mode::LiveArmed] {
-            assert!(!m.label().is_empty());
+    fn a_mistyped_key_is_refused_where_it_was_pasted() {
+        let d = temp_dir("badkey");
+        let s = AppState::new(&d);
+        assert!(s.save_key("not-a-key").is_err());
+        assert_eq!(s.wallet(), None, "nothing was stored");
+    }
+
+    #[test]
+    fn the_two_modes_say_what_they_mean_rather_than_only_naming_themselves() {
+        assert_eq!(Mode::Test.label(), "TEST");
+        assert_eq!(Mode::Live.label(), "LIVE");
+        for m in [Mode::Test, Mode::Live] {
             assert!(m.explain().len() > 40, "{m:?} explains nothing");
         }
-        // "armed" must never read as "live" and vice versa (C7).
-        assert_ne!(Mode::LiveNotArmed.label(), Mode::LiveArmed.label());
-        assert!(Mode::LiveNotArmed.label().contains("NOT ARMED"));
     }
 }

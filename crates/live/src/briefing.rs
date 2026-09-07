@@ -1,38 +1,27 @@
-//! Arming a live session (spec §7.3).
+//! What a user is shown before choosing live mode.
 //!
-//! "Print address, balance and limits; require the user to type `arm`."
+//! The wallet, its balance, and every limit that will be enforced. This is the substance
+//! of what spec §7.3 called an "arm phrase": the word itself was ceremony, but the
+//! information is not — nobody should start trading without seeing which wallet is about
+//! to be spent from and how much of it is at risk.
 //!
-//! The briefing is built here rather than in the CLI so that there is exactly one of it,
-//! and so the thing the user is asked to confirm is the thing the guards will actually
-//! enforce — [`Briefing`] is rendered *from* the same [`LiveGuards`] that [`Budget`] is
-//! constructed with, not from a second copy of the numbers.
+//! The briefing is built here rather than in the UI so there is one of it, and so what the
+//! user confirms is what the guards will actually enforce: [`Briefing`] renders from the
+//! same `LiveGuards` value that [`crate::Budget`] is constructed with, never from a second
+//! copy of the numbers.
 //!
-//! # Why the phrase is exact
+//! # Mode is chosen once, at startup
 //!
-//! `y`, `yes` and a bare Return are all things a person emits while thinking about
-//! something else. Typing a word nobody types by accident is the point, so the match is
-//! exact after trimming: no case folding, no prefixes, no synonyms.
-//!
-//! # `--live` is never a button, but `arm` is typed in the window
-//!
-//! Spec §3.2 and PLAN.md C7. These are two different gates and conflating them is the
-//! mistake to avoid:
-//!
-//! * `--live` is a **process launch flag**. A process started without it can never become
-//!   able to spend; it has to be relaunched. That is what "never a button" means.
-//! * `arm` is typed **inside an already-live process**, once, after reading the briefing.
-//!
-//! So a dry-run process cannot be armed at all, and a live process cannot spend until
-//! somebody types the word. The Status view names which of the three states it is in, so
-//! "armed" is never mistaken for "live" (C7).
+//! The user picks TEST or LIVE when the application opens, and the choice holds for the
+//! life of the process — changing it means restarting. A running session cannot drift from
+//! one to the other, which is the property that actually matters. The previous design
+//! reached it with a launch flag plus a typed word; this reaches it with one deliberate
+//! choice and no jargon.
 
 use alloy_primitives::{Address, U256};
 use quarrel_core::strategy::LiveGuards;
 
-/// The word the user must type. Nothing else arms a session.
-pub const ARM_PHRASE: &str = "arm";
-
-/// What the user is shown before they are asked to arm.
+/// What the user is shown before choosing live mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Briefing {
     pub address: Address,
@@ -82,27 +71,20 @@ impl Briefing {
             self.guards.session_budget_wei,
             eth(self.guards.session_budget_wei)
         ));
-        s.push_str(&format!(
-            "\nType `{ARM_PHRASE}` to arm, or anything else to stay in dry run.\n"
-        ));
+        s.push_str(
+            "\nChoosing LIVE starts trading against these limits. \
+             TEST runs everything except signing.\n",
+        );
         s
     }
 
     /// True when the wallet cannot fund even one buy at the configured size.
     ///
-    /// Worth saying before the phrase rather than after the first refusal: arming a
-    /// session that can never fire is a worse experience than being told why.
+    /// Worth saying on the choice screen rather than after the first refusal: starting a
+    /// live session that can never fire is a worse experience than being told why.
     pub fn cannot_fund_a_single_buy(&self) -> bool {
         self.balance_wei < self.guards.size_per_buy_wei
     }
-}
-
-/// Whether what the user typed arms the session.
-///
-/// Trimmed, then compared exactly. `Arm`, `ARM` and `arm ` do not arm: a phrase that
-/// accepts near misses is a phrase that accepts a mis-key.
-pub fn phrase_arms(typed: &str) -> bool {
-    typed.trim() == ARM_PHRASE
 }
 
 /// Wei as ETH, to four decimal places, without floating point.
@@ -134,24 +116,6 @@ mod tests {
     }
 
     #[test]
-    fn only_the_exact_phrase_arms_a_session() {
-        assert!(phrase_arms("arm"));
-        // Trailing whitespace from a terminal is not a mis-key.
-        assert!(phrase_arms("arm\n"));
-        assert!(phrase_arms("  arm  "));
-    }
-
-    #[test]
-    fn everything_a_person_types_while_distracted_does_not_arm() {
-        for typed in [
-            "", "y", "Y", "yes", "YES", "ok", "\n", " ", "ARM", "Arm", "arm live", "armed", "a",
-            "arms", "disarm",
-        ] {
-            assert!(!phrase_arms(typed), "{typed:?} must not arm a live session");
-        }
-    }
-
-    #[test]
     fn the_briefing_shows_every_limit_that_will_be_enforced() {
         let b = briefing();
         let text = b.render();
@@ -164,7 +128,7 @@ mod tests {
         }
         assert!(text.contains("LIVE TRADING"));
         assert!(text.contains("real money"));
-        assert!(text.contains("Type `arm`"));
+        assert!(text.contains("TEST runs everything except signing"));
     }
 
     #[test]
@@ -217,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wallet_too_empty_to_buy_is_flagged_before_arming() {
+    fn a_wallet_too_empty_to_buy_is_flagged_before_the_choice() {
         let b = Briefing {
             balance_wei: U256::from(1u64),
             ..briefing()

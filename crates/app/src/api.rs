@@ -47,8 +47,9 @@ pub struct StoreSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
-    /// Always rendered, on every view (spec §8, view 6).
-    pub mode: Mode,
+    /// `None` until the startup screen has been answered, which is what the UI keys the
+    /// mode picker on.
+    pub mode: Option<Mode>,
     pub mode_label: String,
     /// What this mode means, in the terms PLAN.md C7 asks for.
     pub engine: String,
@@ -61,21 +62,31 @@ pub struct Status {
     pub chain_id: u64,
     pub explorer: String,
     pub has_saved_strategy: bool,
+    /// The wallet a saved key derives, as a `0x` string, or `None` when none is set.
+    /// Never the key itself.
+    pub wallet: Option<String>,
 }
 
 pub fn status(state: &AppState) -> Status {
     let store = store_summary(state);
     Status {
         mode: state.mode(),
-        mode_label: state.mode().label().to_string(),
-        engine: state.mode().explain().to_string(),
-        can_spend: state.mode().can_spend(),
+        mode_label: state
+            .mode()
+            .map(|m| m.label().to_string())
+            .unwrap_or_else(|| "CHOOSING".into()),
+        engine: state
+            .mode()
+            .map(|m| m.explain().to_string())
+            .unwrap_or_else(|| "No mode chosen yet.".into()),
+        can_spend: state.mode().is_some_and(|m| m.can_spend()),
         indexing: state.is_indexing(),
         data_dir: state.data_dir().display().to_string(),
         store,
         chain_id: quarrel_chain::addr::CHAIN_ID,
         explorer: quarrel_chain::addr::EXPLORER.to_string(),
         has_saved_strategy: state.has_saved_strategy(),
+        wallet: state.wallet().map(|a| format!("{a:#x}")),
     }
 }
 
@@ -479,7 +490,7 @@ mod tests {
 
     /// The store built by `tests/support`, opened through an `AppState`.
     fn state_with(dir: &std::path::Path) -> AppState {
-        AppState::new(dir, false)
+        AppState::new(dir)
     }
 
     #[test]
@@ -491,9 +502,9 @@ mod tests {
 
         assert!(!s.store.exists);
         assert_eq!(s.store.launches, 0);
-        assert_eq!(s.mode_label, "DRY RUN");
-        assert!(!s.can_spend, "a dry-run process can never spend");
-        assert!(s.engine.contains("holds no key"), "{}", s.engine);
+        assert_eq!(s.mode, None, "no mode until the user picks one");
+        assert_eq!(s.mode_label, "CHOOSING");
+        assert!(!s.can_spend, "and nothing can spend before the choice");
     }
 
     #[test]

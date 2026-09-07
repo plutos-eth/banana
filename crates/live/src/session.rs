@@ -1,57 +1,60 @@
 //! A trading session: the mode, the key, and the budget, as one thing.
 //!
-//! Spec §3.2: "Dry run by default. Real money moves only behind an explicit `--live`
-//! launch flag."
+//! Two modes, chosen once when the application starts:
 //!
-//! The way that is made true here is not a boolean anybody checks. A [`Session`] owns a
-//! `Box<dyn Signer>`, and a dry-run session owns a [`NoSigner`] — which has no key and
-//! returns an error from `sign`. There is no code path that spends money without a
-//! signature, so a dry-run session cannot spend money even if every other check in the
-//! program were removed.
+//! * **TEST** — everything runs and nothing is signed.
+//! * **LIVE** — entries are signed and sent, inside the money guards.
 //!
-//! [`Session::live`] is the only constructor that reads a key, and it takes proof that the
-//! user typed the arm phrase. That proof is a value ([`Armed`]) that can only be made by
-//! [`crate::arm`] agreeing the phrase matched, so "armed" is not a flag that could be set
-//! by mistake somewhere else.
+//! The way "TEST cannot spend" is made true is not a boolean anybody checks. A [`Session`]
+//! owns a `Box<dyn Signer>`, and a test session owns a [`NoSigner`] — which holds no key
+//! and returns an error from `sign`. There is no code path that spends money without a
+//! signature, so a test session cannot spend even if every other check in the program were
+//! removed.
+//!
+//! The choice holds for the life of the process. Changing it means restarting, which is
+//! what keeps a running session from drifting into spending money it was not started to
+//! spend.
 
 use alloy_primitives::{Address, U256};
 use quarrel_core::strategy::LiveGuards;
 
-use crate::arm::{Briefing, phrase_arms};
+use crate::briefing::Briefing;
 use crate::guards::{Budget, Refused, Spend};
-use crate::signer::{EnvSigner, NoSigner, SignedTx, Signer, SignerError, TxRequest};
+use crate::signer::{KeySigner, NoSigner, SignedTx, Signer, SignerError, TxRequest};
 
-/// Whether real money can move (spec §3.2). Displayed on every surface, always.
+/// Whether real money can move. Displayed on every surface, always (spec §3.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
-    DryRun,
+    /// Everything runs; nothing is signed. No key is loaded.
+    Test,
+    /// Entries are signed and sent, inside the money guards.
     Live,
 }
 
 impl Mode {
     pub fn label(self) -> &'static str {
         match self {
-            Mode::DryRun => "DRY RUN",
+            Mode::Test => "TEST",
             Mode::Live => "LIVE",
         }
     }
-}
 
-/// Proof that a human typed the arm phrase after seeing the briefing.
-///
-/// The only way to construct one is [`Armed::from_input`], which checks the phrase. It is
-/// not `Clone` and not `Default`: an arming cannot be copied to a second session or
-/// conjured by a struct literal somewhere else in the codebase.
-#[derive(Debug)]
-pub struct Armed(());
+    /// The only mode in which a transaction can be signed.
+    pub fn can_spend(self) -> bool {
+        matches!(self, Mode::Live)
+    }
 
-impl Armed {
-    /// Check what the user typed against the briefing they were shown.
-    ///
-    /// Returns `None` when the phrase does not match, which is the same as declining.
-    pub fn from_input(_briefing: &Briefing, typed: &str) -> Option<Self> {
-        phrase_arms(typed).then_some(Armed(()))
+    /// What this mode means, for the user rather than for the code.
+    pub fn explain(self) -> &'static str {
+        match self {
+            Mode::Test => {
+                "Everything runs and nothing can be signed: this session holds no key.                  Restart to switch to live trading."
+            }
+            Mode::Live => {
+                "Entries will be signed and sent, inside the session budget. Restart to                  switch back to test."
+            }
+        }
     }
 }
 
@@ -72,32 +75,24 @@ pub struct Session {
 }
 
 impl Session {
-    /// The default. Everything runs; nothing can be signed.
-    pub fn dry_run(limits: LiveGuards) -> Self {
-        let mut budget = Budget::new(limits);
-        // A dry run is armed so the rest of the pipeline exercises the same path a live
-        // session takes -- the guards, the refusals, the journal. What it cannot do is
-        // sign, and that is the difference that matters.
-        budget.arm();
+    /// Everything runs; nothing can be signed, because there is no key to sign with.
+    pub fn test(limits: LiveGuards) -> Self {
         Self {
-            mode: Mode::DryRun,
+            mode: Mode::Test,
             signer: Box::new(NoSigner),
-            budget,
+            budget: Budget::new(limits),
         }
     }
 
-    /// A session that can spend. Requires the `--live` flag *and* the arm phrase.
+    /// A session that can spend. Reads the key, and fails if there is not one.
     ///
-    /// The `Armed` argument is not decoration: it is the only way to get one, and it can
-    /// only be got by showing a user a briefing and having them type a word.
-    pub fn live(limits: LiveGuards, _armed: Armed) -> Result<Self, SessionError> {
-        let signer = EnvSigner::from_env()?;
-        let mut budget = Budget::new(limits);
-        budget.arm();
+    /// Failing is deliberate: silently falling back to test would leave the user believing
+    /// they are trading when nothing fires, which is worse than an error.
+    pub fn live(limits: LiveGuards, data_dir: &std::path::Path) -> Result<Self, SessionError> {
         Ok(Self {
             mode: Mode::Live,
-            signer: Box::new(signer),
-            budget,
+            signer: Box::new(KeySigner::load(data_dir)?),
+            budget: Budget::new(limits),
         })
     }
 
@@ -147,13 +142,13 @@ impl Session {
         Ok(signed)
     }
 
-    /// Record a spend that did not need signing, for the dry-run journal.
+    /// Record a spend that did not need signing, for the test-mode journal.
     ///
-    /// Keeps the guards' accounting honest in dry run: a simulated session that never
+    /// Keeps the guards' accounting honest in test mode: a simulated session that never
     /// consumed its budget would report that a strategy fits inside limits it would in
     /// fact have blown through.
     pub fn commit_simulated(&mut self, spend: Spend) {
-        debug_assert_eq!(self.mode, Mode::DryRun, "live spends go through sign()");
+        debug_assert_eq!(self.mode, Mode::Test, "live spends go through sign()");
         self.budget.commit(spend);
     }
 
@@ -188,17 +183,18 @@ mod tests {
     }
 
     #[test]
-    fn the_default_session_is_dry_run_and_holds_no_key() {
-        let s = Session::dry_run(LiveGuards::default());
-        assert_eq!(s.mode(), Mode::DryRun);
-        assert_eq!(s.mode().label(), "DRY RUN");
+    fn a_test_session_holds_no_key() {
+        let s = Session::test(LiveGuards::default());
+        assert_eq!(s.mode(), Mode::Test);
+        assert_eq!(s.mode().label(), "TEST");
+        assert!(!s.mode().can_spend());
         assert_eq!(s.address(), Address::ZERO, "no key, no address");
     }
 
-    /// The invariant, stated as a test: a dry run cannot spend money.
+    /// The invariant, stated as a test: TEST cannot spend money.
     #[test]
-    fn a_dry_run_session_cannot_sign_even_with_a_valid_authorisation() {
-        let mut s = Session::dry_run(LiveGuards::default());
+    fn a_test_session_cannot_sign_even_with_a_valid_authorisation() {
+        let mut s = Session::test(LiveGuards::default());
         // The guards are perfectly happy.
         let spend = s.authorise(addr(1), wei(1), wei(1000)).unwrap();
         // And it still cannot spend, because there is nothing to sign with.
@@ -208,45 +204,22 @@ mod tests {
     }
 
     #[test]
-    fn the_arm_phrase_is_the_only_way_to_get_the_proof_a_live_session_needs() {
-        let b = Briefing {
-            address: addr(3),
-            balance_wei: wei(100),
-            chain_id: 4663,
-            guards: LiveGuards::default(),
-        };
-        assert!(Armed::from_input(&b, "arm").is_some());
-        for typed in ["", "y", "yes", "ARM", "arm now"] {
-            assert!(
-                Armed::from_input(&b, typed).is_none(),
-                "{typed:?} produced an arming"
-            );
-        }
-    }
-
-    #[test]
-    fn a_live_session_without_a_key_fails_rather_than_falling_back_to_dry_run() {
+    fn a_live_session_without_a_key_fails_rather_than_falling_back_to_test() {
         // Silently downgrading would be the worst of both: the user believes they are
-        // live and no orders fire, or they believe they are safe and later a key appears.
+        // live and no orders fire.
         if std::env::var("PRIVATE_KEY").is_ok() {
             return; // a configured machine cannot exercise this
         }
-        let b = Briefing {
-            address: Address::ZERO,
-            balance_wei: wei(100),
-            chain_id: 4663,
-            guards: LiveGuards::default(),
-        };
-        let armed = Armed::from_input(&b, "arm").unwrap();
-        let e = Session::live(LiveGuards::default(), armed).unwrap_err();
+        let e = Session::live(LiveGuards::default(), &std::env::temp_dir()).unwrap_err();
         assert!(matches!(e, SessionError::Signer(SignerError::NoKey)));
+        assert!(e.to_string().contains("Add one in Settings"));
     }
 
     #[test]
-    fn the_guards_still_refuse_in_dry_run() {
-        // A dry run that ignored the guards would report that a strategy fits inside
+    fn the_guards_still_refuse_in_test_mode() {
+        // A test run that ignored the guards would report that a strategy fits inside
         // limits it would have blown through.
-        let s = Session::dry_run(LiveGuards::default());
+        let s = Session::test(LiveGuards::default());
         let e = s.authorise(addr(1), wei(50), wei(1000)).unwrap_err();
         assert!(matches!(e, SessionError::Refused(_)));
         assert!(e.to_string().contains("per-buy cap"));
@@ -254,13 +227,13 @@ mod tests {
 
     #[test]
     fn a_simulated_session_spends_its_budget_like_a_real_one() {
-        let mut s = Session::dry_run(LiveGuards::default());
+        let mut s = Session::test(LiveGuards::default());
         for i in 1..=3 {
             let spend = s.authorise(addr(i), wei(1), wei(1000)).unwrap();
             s.commit_simulated(spend);
         }
         assert_eq!(s.budget().spent(), wei(3));
-        // And the open-position cap bites in dry run exactly as it would live.
+        // And the open-position cap bites in test exactly as it would live.
         assert!(s.authorise(addr(4), wei(1), wei(1000)).is_err());
     }
 
@@ -270,10 +243,20 @@ mod tests {
             session_budget_wei: wei(7),
             ..LiveGuards::default()
         };
-        let s = Session::dry_run(limits);
+        let s = Session::test(limits);
         let b = s.briefing(wei(100), 4663);
         assert_eq!(b.guards.session_budget_wei, wei(7));
         assert_eq!(b.address, s.address());
         assert!(b.render().contains("LIVE TRADING"));
+    }
+
+    #[test]
+    fn each_mode_says_what_it_means_rather_than_only_naming_itself() {
+        for m in [Mode::Test, Mode::Live] {
+            assert!(!m.label().is_empty());
+            assert!(m.explain().len() > 40, "{m:?} explains nothing");
+        }
+        assert!(Mode::Test.explain().contains("holds no key"));
+        assert!(Mode::Live.explain().contains("signed and sent"));
     }
 }

@@ -138,14 +138,36 @@ fn twitter_only() -> StrategyConfig {
 fn status_reads_a_real_store() {
     let d = temp_dir("status");
     build_store(&d, 40);
-    let s = api::status(&AppState::new(&d, false));
+    let s = api::status(&AppState::new(&d));
 
     assert!(s.store.exists);
     assert_eq!(s.store.launches, 40);
     assert!(s.store.bytes > 0);
-    assert_eq!(s.mode_label, "DRY RUN", "the indicator is on every view");
     assert_eq!(s.chain_id, 4663);
     assert!(!s.indexing);
+
+    // No mode until the startup screen is answered, and nothing can spend before then.
+    assert_eq!(s.mode, None);
+    assert_eq!(s.mode_label, "CHOOSING");
+    assert!(!s.can_spend);
+}
+
+/// The mode is chosen once and then fixed for the process.
+#[test]
+fn choosing_test_mode_is_reported_on_every_view() {
+    let d = temp_dir("chosen");
+    build_store(&d, 3);
+    let state = AppState::new(&d);
+    state.choose_mode(quarrel_app::Mode::Test).unwrap();
+
+    let s = api::status(&state);
+    assert_eq!(s.mode_label, "TEST", "the indicator is on every view");
+    assert!(!s.can_spend, "TEST holds no key and cannot sign");
+    assert!(s.engine.contains("holds no key"), "{}", s.engine);
+
+    // Changing mode mid-session is refused; restarting is how you change it.
+    let e = state.choose_mode(quarrel_app::Mode::Live).unwrap_err();
+    assert!(e.to_string().contains("Restart to change mode"), "{e}");
 }
 
 // --- view 1: feed -------------------------------------------------------------------------
@@ -154,7 +176,7 @@ fn status_reads_a_real_store() {
 fn the_feed_shows_every_launch_with_its_decision_and_its_reasons() {
     let d = temp_dir("feed");
     build_store(&d, 40);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
     state.save_strategy(&twitter_only()).unwrap();
 
     let page = api::feed(&state, &api::FeedQuery::default()).unwrap();
@@ -176,7 +198,7 @@ fn the_feed_shows_every_launch_with_its_decision_and_its_reasons() {
 fn the_passing_chip_and_the_search_box_narrow_the_same_list() {
     let d = temp_dir("feedfilter");
     build_store(&d, 40);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
     state.save_strategy(&twitter_only()).unwrap();
 
     let passing = api::feed(
@@ -206,7 +228,7 @@ fn the_passing_chip_and_the_search_box_narrow_the_same_list() {
 fn the_feed_says_when_it_is_showing_less_than_the_store_holds() {
     let d = temp_dir("feedcap");
     build_store(&d, 40);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
 
     let page = api::feed(
         &state,
@@ -227,7 +249,7 @@ fn the_feed_says_when_it_is_showing_less_than_the_store_holds() {
 fn the_detail_drawer_shows_every_rule_and_its_verdict() {
     let d = temp_dir("detail");
     build_store(&d, 10);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
     state.save_strategy(&twitter_only()).unwrap();
 
     // Token 1 has no twitter (odd index), so it is refused and says why.
@@ -258,7 +280,7 @@ fn the_detail_drawer_shows_every_rule_and_its_verdict() {
 fn asking_for_a_launch_that_is_not_there_says_so() {
     let d = temp_dir("missing");
     build_store(&d, 3);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
     let e = api::launch_detail(&state, &format!("{:#x}", addr(999_999)));
     assert!(e.is_err());
     // And a value that is not an address at all is refused before it reaches the store.
@@ -271,7 +293,7 @@ fn asking_for_a_launch_that_is_not_there_says_so() {
 fn the_lab_runs_over_the_same_store_and_keeps_its_guards() {
     let d = temp_dir("lab");
     build_store(&d, 40);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
 
     let r = api::backtest(&state, &twitter_only()).unwrap();
     assert_eq!(r.funnel.stage("all_launches").unwrap().remaining, 40);
@@ -290,7 +312,7 @@ fn the_sample_gate_survives_the_trip_through_the_ipc_layer() {
     // the value has been serialised for the window.
     let d = temp_dir("gate");
     build_store(&d, 29);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
 
     let r = api::backtest(
         &state,
@@ -313,7 +335,7 @@ fn the_sample_gate_survives_the_trip_through_the_ipc_layer() {
 fn positions_is_empty_and_explains_itself() {
     let d = temp_dir("positions");
     build_store(&d, 3);
-    let p = api::positions(&AppState::new(&d, false));
+    let p = api::positions(&AppState::new(&d));
     assert!(p.open.is_empty() && p.closed.is_empty());
     assert!(!p.note.is_empty(), "an empty view must say why it is empty");
 }
@@ -324,7 +346,7 @@ fn positions_is_empty_and_explains_itself() {
 fn the_index_view_reports_phase_state_so_a_resume_is_visible() {
     let d = temp_dir("index");
     build_store(&d, 12);
-    let s = api::index_status(&AppState::new(&d, false)).unwrap();
+    let s = api::index_status(&AppState::new(&d)).unwrap();
 
     assert_eq!(s.store.launches, 12);
     let launches = s.phases.iter().find(|p| p.phase == "launches").unwrap();
@@ -339,7 +361,7 @@ fn the_index_view_reports_phase_state_so_a_resume_is_visible() {
 fn saving_a_strategy_writes_the_file_the_sniper_will_arm_from() {
     let d = temp_dir("rules");
     build_store(&d, 3);
-    let state = AppState::new(&d, false);
+    let state = AppState::new(&d);
 
     let mut cfg = StrategyConfig::default();
     cfg.entry_model.max_tax_bps = 250;
@@ -350,7 +372,7 @@ fn saving_a_strategy_writes_the_file_the_sniper_will_arm_from() {
     let raw = std::fs::read_to_string(d.join("strategy.json")).unwrap();
     let back: StrategyConfig = serde_json::from_str(&raw).unwrap();
     assert_eq!(back, cfg);
-    assert_eq!(AppState::new(&d, false).strategy(), cfg);
+    assert_eq!(AppState::new(&d).strategy(), cfg);
 }
 
 // --- against the real indexed window ------------------------------------------------------
@@ -373,7 +395,7 @@ fn every_view_works_against_the_indexed_window() {
         println!("an index holds the writer lock; skipping");
         return;
     }
-    let state = AppState::new(dir, false);
+    let state = AppState::new(dir);
 
     let status = api::status(&state);
     assert!(status.store.launches > 0);

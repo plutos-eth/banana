@@ -18,24 +18,32 @@ pub use state::{AppError, AppState, Mode};
 
 /// Where the store and the strategy live.
 ///
-/// Relative to the working directory rather than to a per-user application folder, because
-/// `history.db` is a gigabyte a day and the user should be able to see it, move it and
-/// point a cron job at the same path (spec sec.10). `--data-dir` overrides it.
+/// Resolved so that double-clicking the executable works, which it did not when this was
+/// simply `"data"`: launched from Explorer the working directory is wherever the icon
+/// happens to point, so a relative path found an empty store and the app reported no
+/// launches. Three rules, in order, each with a reason:
+///
+/// 1. `--data-dir <path>`, for scripts and for a second store.
+/// 2. `./data` **if it already exists** — a terminal or a cron job run from the project
+///    directory keeps working exactly as before.
+/// 3. `<directory of the executable>/data`, which is what a double-click gets: the store
+///    sits beside the program, where the user can see it, move it and back it up.
 fn data_dir() -> std::path::PathBuf {
-    std::env::args()
+    if let Some(explicit) = std::env::args()
         .skip_while(|a| a != "--data-dir")
         .nth(1)
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("data"))
-}
-
-/// Whether this process was launched with `--live` (spec §3.2, PLAN.md C7).
-///
-/// A launch flag and never a button: a process started without it cannot be talked into
-/// being one with it, which is what makes "real money moves only behind an explicit flag"
-/// a property of the process rather than of a check somebody might skip.
-fn live_flag() -> bool {
-    std::env::args().any(|a| a == "--live")
+    {
+        return explicit;
+    }
+    let cwd = std::path::PathBuf::from("data");
+    if cwd.is_dir() {
+        return cwd;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("data")))
+        .unwrap_or(cwd)
 }
 
 /// Build and run the desktop application.
@@ -48,7 +56,7 @@ pub fn run() {
         .init();
 
     let app = tauri::Builder::default()
-        .manage(AppState::new(data_dir(), live_flag()))
+        .manage(AppState::new(data_dir()))
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::get_strategy,
@@ -61,7 +69,9 @@ pub fn run() {
             commands::get_index_status,
             commands::start_index,
             commands::open_explorer,
-            commands::arm,
+            commands::choose_mode,
+            commands::save_key,
+            commands::clear_key,
         ])
         .build(tauri::generate_context!())
         .expect("the desktop shell failed to start");

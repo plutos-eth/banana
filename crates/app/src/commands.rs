@@ -85,15 +85,37 @@ pub async fn start_index(
     Ok(())
 }
 
-/// Arm a live session (spec §7.3, PLAN.md C7).
+/// Choose TEST or LIVE, once, on the startup screen.
 ///
-/// Refuses outright in a dry-run process: `--live` is a launch flag, so a process without
-/// it has no key to arm and relaunching is the only way to get one. The phrase itself is
-/// checked in `quarrel-live`, which is also where the briefing the user read was built,
-/// so the words and the limits cannot drift apart.
+/// The whole mode decision, in one call. It replaces the launch flag and the arm phrase
+/// that preceded it: two ceremonies for one choice was confusing without being safer, and
+/// what actually stops a test session spending is that it holds no key at all.
+///
+/// A second call with a different mode is refused. Restarting is how you change your mind,
+/// which keeps a running session from drifting into spending money it was not started to
+/// spend.
 #[tauri::command]
-pub fn arm(state: State<'_, AppState>, phrase: String) -> Result<crate::state::Mode> {
-    state.arm(&phrase)
+pub fn choose_mode(
+    state: State<'_, AppState>,
+    mode: crate::state::Mode,
+) -> Result<crate::state::Mode> {
+    state.choose_mode(mode)
+}
+
+/// Store a private key pasted into Settings.
+///
+/// Returns the **address** it derives, never the key. The key is validated before it is
+/// written, so a mistyped one is refused where it was pasted rather than the first time an
+/// order would have fired.
+#[tauri::command]
+pub fn save_key(state: State<'_, AppState>, key: String) -> Result<String> {
+    state.save_key(&key).map(|a| format!("{a:#x}"))
+}
+
+/// Forget the stored key.
+#[tauri::command]
+pub fn clear_key(state: State<'_, AppState>) -> Result<()> {
+    state.clear_key()
 }
 
 /// Open a URL in the user's own browser.

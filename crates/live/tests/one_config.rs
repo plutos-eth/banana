@@ -108,7 +108,7 @@ fn the_sniper_reads_its_guards_and_exits_from_the_file_the_lab_ignored() {
     let json = serde_json::to_string(&saved_strategy()).unwrap();
     let loaded: StrategyConfig = serde_json::from_str(&json).unwrap();
 
-    let session = Session::dry_run(loaded.live_guards.clone());
+    let session = Session::test(loaded.live_guards.clone());
     assert_eq!(session.budget().limits().max_open_positions, 2);
 
     // The partial the user wrote is the partial the exit rules apply.
