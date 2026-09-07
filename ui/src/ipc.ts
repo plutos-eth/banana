@@ -76,6 +76,8 @@ export interface Status {
   chain_id: number;
   explorer: string;
   has_saved_strategy: boolean;
+  /** Whether the sniper is running right now. */
+  engine_running: boolean;
   /** The wallet a saved key derives. Never the key: it does not cross this boundary. */
   wallet: string | null;
 }
@@ -299,11 +301,90 @@ export interface DonePayload {
   trades: number;
 }
 
-export interface Positions {
-  open: unknown[];
-  closed: unknown[];
-  note: string;
+/**
+ * One position. Money arrives as decimal strings because a `U256` does not fit a
+ * JavaScript number, and a balance rounded to 53 bits of mantissa on the way to a screen
+ * is the sort of quiet wrongness the money path exists to prevent. Format them; never
+ * add them here.
+ */
+export interface PositionRow {
+  token: string;
+  symbol: string;
+  pair: string;
+  opened_at: number;
+  closed_at: number | null;
+  cost_wei: string;
+  proceeds_wei: string;
+  tokens_held: string;
+  remaining_bps: number;
+  /** Last mark, in bps of what the remainder cost. 10000 is break-even. */
+  mult_bps: number | null;
+  /** Best mark seen. NOT profit: see §5.4. Labelled as "peak", never as a gain. */
+  peak_bps: number;
+  close_reason: string | null;
+  /** No transaction was ever sent for this position: it was a rehearsal. */
+  simulated: boolean;
 }
+
+export interface RefusalCount {
+  rule: string;
+  count: number;
+}
+
+export interface Positions {
+  open: PositionRow[];
+  closed: PositionRow[];
+  note: string;
+  refusals: RefusalCount[];
+  refusals_total: number;
+}
+
+/**
+ * What the engine reports as it runs. The discriminant is `kind`; every variant carries
+ * the reason for what it did, because the refusal is the product (§3.4).
+ */
+export type EngineEvent =
+  | { kind: "started"; mode: Mode; wallet: string | null; coverage: string; notes: string[] }
+  | { kind: "health"; head: number; behind_blocks: number; latency_ms: number; watched: number }
+  | { kind: "gap"; detail: string }
+  | { kind: "trouble"; detail: string; consecutive: number }
+  | { kind: "seen"; token: string; block: number; age_ms: number }
+  | { kind: "refused"; token: string; symbol: string; rule: string; detail: string }
+  | { kind: "waiting"; token: string; symbol: string; tax_bps: number }
+  | {
+      kind: "entered";
+      token: string;
+      symbol: string;
+      quote_wei: string;
+      tokens: string;
+      tax_bps: number;
+      tax_paid_bps: number | null;
+      tx_hash: string | null;
+      simulated: boolean;
+      detail: string;
+    }
+  | {
+      kind: "marked";
+      token: string;
+      symbol: string;
+      mult_bps: number;
+      peak_bps: number;
+      remaining_bps: number;
+    }
+  | {
+      kind: "exited";
+      token: string;
+      symbol: string;
+      rule: string;
+      detail: string;
+      sell_bps: number;
+      quote_wei: string;
+      tx_hash: string | null;
+      simulated: boolean;
+      closed: boolean;
+    }
+  | { kind: "failed"; token: string; symbol: string; detail: string }
+  | { kind: "stopped"; detail: string; tax_summary: string };
 
 // --- the calls ----------------------------------------------------------------------
 
@@ -321,6 +402,8 @@ export const api = {
     invoke<void>("start_index", { from, to }),
   openExplorer: (url: string) => invoke<void>("open_explorer", { url }),
   chooseMode: (mode: Mode) => invoke<Mode>("choose_mode", { mode }),
+  startEngine: () => invoke<number>("start_engine"),
+  stopEngine: () => invoke<boolean>("stop_engine"),
   saveKey: (key: string) => invoke<string>("save_key", { key }),
   clearKey: () => invoke<void>("clear_key"),
 };
@@ -330,6 +413,9 @@ export const events = {
     listen<ProgressPayload>("index-progress", (e) => f(e.payload)),
   indexDone: (f: (p: DonePayload) => void): Promise<UnlistenFn> =>
     listen<DonePayload>("index-done", (e) => f(e.payload)),
+  engine: (f: (e: EngineEvent) => void): Promise<UnlistenFn> =>
+    listen<EngineEvent>("engine", (e) => f(e.payload)),
+  engineStopped: (f: () => void): Promise<UnlistenFn> => listen<null>("engine-stopped", () => f()),
 };
 
 /**

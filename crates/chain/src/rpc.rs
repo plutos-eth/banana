@@ -106,6 +106,35 @@ pub struct TxInfo {
     pub block_number: u64,
 }
 
+/// A mined transaction's outcome and the logs it emitted.
+///
+/// The sniper needs this twice: to read the launch transaction's own `CurveBuy` (the dev
+/// buy, and the only point-in-time source for it), and to read back what its own buy
+/// actually paid from the `CurveBuy` and `SnipeTaxCharged` the buy emitted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Receipt {
+    pub tx_hash: B256,
+    pub block_number: u64,
+    /// `false` means the transaction reverted. Its logs will be empty.
+    pub success: bool,
+    pub gas_used: u64,
+    /// The effective gas price actually charged, which on this chain is the base fee.
+    pub effective_gas_price: u128,
+    pub logs: Vec<RawLog>,
+}
+
+impl Receipt {
+    /// Logs emitted by one contract, in order.
+    pub fn logs_from(&self, who: Address) -> impl Iterator<Item = &RawLog> {
+        self.logs.iter().filter(move |l| l.address == who)
+    }
+
+    /// What the transaction cost in wei.
+    pub fn fee_wei(&self) -> U256 {
+        U256::from(self.gas_used).saturating_mul(U256::from(self.effective_gas_price))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockHeader {
     pub number: u64,
@@ -244,6 +273,25 @@ impl Client {
         Ok(Some(parse_tx(&v)?))
     }
 
+    /// A mined transaction's receipt, or `None` while it is still pending.
+    ///
+    /// `None` is not an error: a receipt asked for too soon simply is not there yet, and
+    /// the caller polls. An error means the endpoint could not answer.
+    pub async fn get_transaction_receipt(
+        &self,
+        hash: B256,
+        p: Priority,
+    ) -> Result<Option<Receipt>, RpcError> {
+        let v = self
+            .gate
+            .call("eth_getTransactionReceipt", json!([hash.to_string()]), p)
+            .await?;
+        if v.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(parse_receipt(&v)?))
+    }
+
     /// A block header without its transactions.
     ///
     /// `false` for the second parameter matters: including full transaction bodies would
@@ -271,6 +319,104 @@ impl Client {
                 "block.timestamp",
             )?,
         }))
+    }
+
+    /// An account's balance in wei.
+    pub async fn balance(&self, a: Address, p: Priority) -> Result<U256, RpcError> {
+        let v = self
+            .gate
+            .call("eth_getBalance", json!([a.to_string(), "latest"]), p)
+            .await?;
+        parse_u256(&v, "eth_getBalance")
+    }
+
+    /// The next nonce, counting transactions this node has seen but not yet mined.
+    ///
+    /// `pending` rather than `latest`: with one transaction in flight at a time the two
+    /// agree, but `latest` would reuse a nonce the moment that stops being true, and a
+    /// replaced transaction is a very expensive way to find out.
+    pub async fn next_nonce(&self, a: Address, p: Priority) -> Result<u64, RpcError> {
+        let v = self
+            .gate
+            .call(
+                "eth_getTransactionCount",
+                json!([a.to_string(), "pending"]),
+                p,
+            )
+            .await?;
+        parse_u64(&v, "eth_getTransactionCount")
+    }
+
+    /// The current gas price.
+    ///
+    /// On this chain there is no priority-fee auction — no mempool to bid into (spec §2) —
+    /// so this is the base fee and it is what a transaction actually pays.
+    pub async fn gas_price(&self, p: Priority) -> Result<u128, RpcError> {
+        let v = self.gate.call("eth_gasPrice", json!([]), p).await?;
+        Ok(parse_u256(&v, "eth_gasPrice")?.saturating_to::<u128>())
+    }
+
+    /// Simulate a call and return the gas it would use.
+    ///
+    /// A revert arrives as [`RpcError::Rpc`] carrying the endpoint's own message — usually
+    /// `execution reverted` and the contract's reason. That is the difference between "the
+    /// order would fail" and "the endpoint is down", and the caller must not conflate them:
+    /// the first is a refusal to report, the second is worth retrying.
+    pub async fn estimate_gas(
+        &self,
+        from: Address,
+        to: Address,
+        value: U256,
+        data: &[u8],
+        p: Priority,
+    ) -> Result<u64, RpcError> {
+        let params = json!([{
+            "from": from.to_string(),
+            "to": to.to_string(),
+            "value": format!("0x{value:x}"),
+            "data": hex::encode_prefixed(data),
+        }]);
+        let v = self.gate.call("eth_estimateGas", params, p).await?;
+        parse_u64(&v, "eth_estimateGas")
+    }
+
+    /// `eth_call`, returning raw bytes, so a caller can simulate an order before sending it.
+    pub async fn call_raw(
+        &self,
+        from: Address,
+        to: Address,
+        value: U256,
+        data: &[u8],
+        p: Priority,
+    ) -> Result<Bytes, RpcError> {
+        let params = json!([{
+            "from": from.to_string(),
+            "to": to.to_string(),
+            "value": format!("0x{value:x}"),
+            "data": hex::encode_prefixed(data),
+        }, "latest"]);
+        let v = self.gate.call("eth_call", params, p).await?;
+        let raw = v.as_str().unwrap_or("0x");
+        Ok(hex::decode(raw)
+            .map_err(|e| malformed("eth_call", e.to_string()))?
+            .into())
+    }
+
+    /// Broadcast a signed transaction.
+    ///
+    /// The only method in this file that changes anything. Producing its argument requires
+    /// a signature, and a signature requires the key, which exists in `quarrel-live` and
+    /// nowhere else — so this being here does not widen the trust boundary of spec §3.8.
+    pub async fn send_raw_transaction(&self, raw: &[u8], p: Priority) -> Result<B256, RpcError> {
+        let v = self
+            .gate
+            .call(
+                "eth_sendRawTransaction",
+                json!([hex::encode_prefixed(raw)]),
+                p,
+            )
+            .await?;
+        parse_b256(&v, "eth_sendRawTransaction")
     }
 
     /// Whether an address has code. Used by `doctor` to verify every hardcoded address is
@@ -353,6 +499,36 @@ fn parse_log(v: &Value) -> Result<RawLog, RpcError> {
             "log.transactionIndex",
         )?,
         log_index: parse_u64(v.get("logIndex").unwrap_or(&Value::Null), "log.logIndex")?,
+    })
+}
+
+fn parse_receipt(v: &Value) -> Result<Receipt, RpcError> {
+    let logs = v
+        .get("logs")
+        .and_then(|l| l.as_array())
+        .ok_or_else(|| malformed("receipt", "no logs array"))?
+        .iter()
+        .map(parse_log)
+        .collect::<Result<Vec<_>, _>>()?;
+    // `status` is 0x1 or 0x0. A receipt without one predates Byzantium and cannot occur
+    // on this chain, so its absence is malformed rather than a case to guess at.
+    let status = parse_u64(v.get("status").unwrap_or(&Value::Null), "receipt.status")?;
+    Ok(Receipt {
+        tx_hash: parse_b256(
+            v.get("transactionHash").unwrap_or(&Value::Null),
+            "receipt.transactionHash",
+        )?,
+        block_number: parse_u64(
+            v.get("blockNumber").unwrap_or(&Value::Null),
+            "receipt.blockNumber",
+        )?,
+        success: status == 1,
+        gas_used: parse_u64(v.get("gasUsed").unwrap_or(&Value::Null), "receipt.gasUsed")?,
+        effective_gas_price: parse_u64(
+            v.get("effectiveGasPrice").unwrap_or(&Value::Null),
+            "receipt.effectiveGasPrice",
+        )? as u128,
+        logs,
     })
 }
 

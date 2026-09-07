@@ -142,6 +142,17 @@ impl Session {
         Ok(signed)
     }
 
+    /// Sign a transaction that spends nothing: an exit, or an approval.
+    ///
+    /// No [`Spend`], deliberately. The money guards cap what is put **at risk**, and a
+    /// guard that could refuse a sale would be a guard that loses money — the position is
+    /// already open, and the only thing left to decide is whether to keep holding it.
+    ///
+    /// In TEST this fails exactly as `sign` does, for the same reason: no key.
+    pub fn sign_exit(&self, tx: &TxRequest) -> Result<SignedTx, SessionError> {
+        Ok(self.signer.sign(tx)?)
+    }
+
     /// Record a spend that did not need signing, for the test-mode journal.
     ///
     /// Keeps the guards' accounting honest in test mode: a simulated session that never

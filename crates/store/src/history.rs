@@ -478,6 +478,50 @@ impl History {
         Ok(rows)
     }
 
+    /// What the store knows about one deployer, and how far back it can see.
+    ///
+    /// The sniper's equivalent of what [`crate::lab`] precomputes for the Lab. It cannot
+    /// use the `pit_features` table: those rows are computed per indexed launch, and a
+    /// launch that happened thirty seconds ago has no row and never will until the next
+    /// index.
+    ///
+    /// **Everything in the store is the past**, so counting all of it is point-in-time for
+    /// a launch happening now. What is *not* automatic is honesty about the depth, which
+    /// is why [`DeployerSeen`] carries the window it was counted over rather than a bare
+    /// pair of numbers: a store indexed yesterday will report a deployer as fresh who has
+    /// launched forty times since, and the caller has to be able to tell.
+    pub fn deployer_history(&self, deployer: Address) -> Result<DeployerSeen> {
+        let (launches, graduations): (i64, i64) = self.conn.query_row(
+            "SELECT count(*),
+                    coalesce(sum(CASE WHEN g.token IS NOT NULL THEN 1 ELSE 0 END), 0)
+             FROM launches l
+             LEFT JOIN graduations g ON g.token = l.token
+             WHERE l.deployer = ?1",
+            params![addr_key(deployer)],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(DeployerSeen {
+            launches: launches.max(0) as u32,
+            graduations: graduations.max(0) as u32,
+        })
+    }
+
+    /// Which deployer launched a token, when the store has seen the launch.
+    ///
+    /// The sniper needs this to attribute a graduation seen live to a deployer whose token
+    /// launched before this session started watching.
+    pub fn deployer_of(&self, token: Address) -> Result<Option<Address>> {
+        let raw: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT deployer FROM launches WHERE token = ?1",
+                params![addr_key(token)],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(raw.and_then(|s| s.parse().ok()))
+    }
+
     /// Trades on one curve, in chain order. This is what the outcome replay walks.
     /// The dev buy: the first buy on `curve` **within the launch transaction**.
     ///
@@ -897,6 +941,16 @@ pub struct PendingCalldata {
     pub ordinal: usize,
     /// How many launches the transaction produced.
     pub total: usize,
+}
+
+/// What the store has seen one deployer do.
+///
+/// Counts only. The window they were counted over belongs to the caller, because it is a
+/// property of the store rather than of the deployer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DeployerSeen {
+    pub launches: u32,
+    pub graduations: u32,
 }
 
 /// A launch reduced to what feature and outcome computation need.

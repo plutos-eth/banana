@@ -9,7 +9,7 @@
 //! (PLAN.md C1), so this list *is* the set of things the frontend can cause to happen.
 
 use quarrel_core::strategy::StrategyConfig;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::api;
 use crate::state::{AppError, AppState, Result};
@@ -100,6 +100,24 @@ pub fn choose_mode(
     mode: crate::state::Mode,
 ) -> Result<crate::state::Mode> {
     state.choose_mode(mode)
+}
+
+/// Start the sniper.
+///
+/// TEST runs the whole pipeline and stops at the signature; LIVE signs and sends inside
+/// the money guards. Which one is decided by the mode chosen at startup, and it cannot be
+/// changed while the process runs.
+#[tauri::command]
+pub async fn start_engine(app: tauri::AppHandle) -> Result<i64> {
+    let data_dir = app.state::<AppState>().data_dir().to_path_buf();
+    crate::sniper::start(app.clone(), data_dir).await
+}
+
+/// Stop the sniper. Open positions stay open and stop being watched, which the Positions
+/// view says out loud.
+#[tauri::command]
+pub fn stop_engine(state: State<'_, AppState>) -> bool {
+    state.engine().stop()
 }
 
 /// Store a private key pasted into Settings.

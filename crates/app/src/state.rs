@@ -61,6 +61,9 @@ pub struct AppState {
     indexing: AtomicBool,
     /// `None` until the startup screen has been answered. Set once, then fixed.
     mode: Mutex<Option<Mode>>,
+    /// The running sniper, if one is. Not in the window: closing it must not stop a
+    /// position being watched (spec section 4.2).
+    engine: crate::sniper::Handle,
 }
 
 impl AppState {
@@ -75,11 +78,20 @@ impl AppState {
             indexing: AtomicBool::new(false),
             // No mode until the user chooses one, and no way back afterwards.
             mode: Mutex::new(None),
+            engine: crate::sniper::Handle::default(),
         }
     }
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    pub fn engine(&self) -> &crate::sniper::Handle {
+        &self.engine
+    }
+
+    pub fn journal_path(&self) -> PathBuf {
+        self.data_dir.join("live.db")
     }
 
     pub fn db_path(&self) -> PathBuf {
@@ -140,7 +152,7 @@ impl AppState {
     /// memory, so writing a new one would leave the file and the running wallet
     /// disagreeing about which account is being spent from.
     pub fn save_key(&self, raw: &str) -> Result<alloy_primitives::Address> {
-        if self.mode() == Some(Mode::Live) {
+        if self.mode() == Some(Mode::Live) || self.engine.is_running() {
             return Err(AppError::Refused(
                 "this session is already running in LIVE with the current key. Restart \
                  before changing wallets."

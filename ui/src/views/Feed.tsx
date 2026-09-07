@@ -6,7 +6,8 @@
  * `getComputedStyle` — PLAN.md F8 — so the later design pass changes one token and both
  * the CSS and the virtualiser follow. There is no pixel value in this file.
  *
- * Until the engine lands in phase 6 this is the indexed window rather than a live tail.
+ * This is the indexed window, not a live tail: what the engine is seeing right now is in
+ * Positions, beside the positions and refusals it produced.
  * The distinction is stated in the view rather than left for the user to discover.
  */
 
@@ -144,8 +145,8 @@ export function Feed() {
         </div>
       )}
       <div className="banner banner--info">
-        These are indexed launches evaluated by the saved strategy, not a live tail. The
-        engine arrives in phase 6.
+        These are indexed launches evaluated by the saved strategy, not a live tail. What
+        the engine is seeing right now is in Positions.
       </div>
 
       {!hasBackend() ? (

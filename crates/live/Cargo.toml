@@ -21,3 +21,8 @@ alloy-eips = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
+
+[dev-dependencies]
+quarrel-backtest = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync"] }

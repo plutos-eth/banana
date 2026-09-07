@@ -23,71 +23,12 @@
 
 use std::collections::HashMap;
 
-use alloy_primitives::{Address, U256};
+use alloy_primitives::Address;
 use quarrel_core::Bps;
-use quarrel_core::features::{Presence, Socials};
-
-/// A launch farm signature: what one operator's template fixes across many wallets.
-///
-/// Deliberately coarse. It is an exact-match signal, and §11 defers fuzzy clustering to a
-/// later phase, so the fields chosen are the ones a farm is least likely to vary.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Fingerprint(String);
-
-impl Fingerprint {
-    /// Build from launch calldata only. Every input here is point-in-time.
-    pub fn new(
-        dev_buy_quote: Option<U256>,
-        creator_tax_bps: Option<Bps>,
-        socials: Socials,
-        exempt_wallets: Option<u32>,
-    ) -> Self {
-        // Unreadable fields become "?" rather than a default, so a launch that did not
-        // decode does not share a fingerprint with every other launch that did not decode
-        // *and* happened to have a zero dev buy.
-        let dev = dev_buy_quote
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "?".into());
-        let tax = creator_tax_bps
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "?".into());
-        let ex = exempt_wallets
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "?".into());
-        // Three states, not two. A launch whose calldata did not decode has *unknown*
-        // links, which is not the same template attribute as declaring none, and
-        // collapsing them to "000" made every undecodable launch look like a twin of
-        // every socials-free one.
-        let links: String = [socials.twitter, socials.website, socials.telegram]
-            .iter()
-            .map(|p| match p {
-                Presence::Present => '1',
-                Presence::Absent => '0',
-                Presence::Unknown => '?',
-            })
-            .collect();
-        Fingerprint(format!("{dev}|{tax}|{links}|{ex}"))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// True when nothing the **calldata** fixes was readable, so the fingerprint says
-    /// nothing about the operator's template.
-    ///
-    /// These must not be counted as twins of one another: "we could not read either of
-    /// these" is not evidence that they came from the same operator. The dev buy is
-    /// excluded from this test on purpose — it comes from the launch transaction's logs
-    /// and is readable even when the calldata is not, so an undecodable launch that
-    /// happens to share a round dev-buy size with another is still uninformative.
-    pub fn is_uninformative(&self) -> bool {
-        matches!(
-            self.0.split('|').collect::<Vec<_>>()[..],
-            [_, "?", "???", "?"]
-        )
-    }
-}
+// The fingerprint and its window live in `core` because both halves of the product need
+// them: the indexer computes one per launch, and the sniper computes one live to count
+// twins. Two implementations of a farm signature would be two different farm signatures.
+pub use quarrel_core::features::{Fingerprint, TWIN_WINDOW_BLOCKS};
 
 /// A launch, reduced to what feature computation needs.
 #[derive(Debug, Clone)]
@@ -109,9 +50,6 @@ pub struct PitRow {
     pub fingerprint_twins_30m: u32,
     pub deployer_history_depth_blocks: u64,
 }
-
-/// 30 minutes at the measured ~100 ms block time.
-pub const TWIN_WINDOW_BLOCKS: u64 = 18_000;
 
 /// Streams launches in block order, accumulating only what came before.
 #[derive(Debug)]
@@ -228,6 +166,8 @@ impl FeatureBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::U256;
+    use quarrel_core::features::{Presence, Socials};
 
     fn addr(n: u8) -> Address {
         Address::repeat_byte(n)

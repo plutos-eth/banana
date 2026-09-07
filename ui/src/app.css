@@ -124,6 +124,38 @@
   font-size: var(--fs-sm);
   flex: none;
 }
+/* The running index, in the status bar. Always on screen, whatever view is showing. */
+.statusbar__index {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex: 0 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  padding: var(--sp-0);
+  text-align: left;
+}
+.statusbar__index:hover .statusbar__index-label {
+  color: var(--c-text-primary);
+}
+.statusbar__index-label {
+  flex: none;
+}
+.statusbar__index-figures {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.statusbar__index .bar {
+  flex: 1;
+  min-width: var(--sp-9);
+  max-width: var(--w-statusbar-bar);
+}
+
 .statusbar__error {
   background: transparent;
   border: none;
@@ -131,6 +163,12 @@
   font: inherit;
   cursor: pointer;
   padding: var(--sp-0);
+  /* Long messages must not push the live strip off the bar. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+  text-align: left;
 }
 
 /* ---- mode indicator (§3.2) -------------------------------------------------------- */
@@ -315,6 +353,85 @@
   color: var(--c-text-muted);
   max-width: var(--w-drawer);
   margin: var(--sp-0);
+}
+
+/* ---- a plain data table (positions) ----------------------------------------------- */
+
+.datawrap {
+  overflow-x: auto;
+}
+.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.data th {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-0);
+  color: var(--c-text-muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--sp-1);
+  font-weight: var(--fw-normal);
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  white-space: nowrap;
+}
+.data td {
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-0);
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  color: var(--c-text-secondary);
+  vertical-align: top;
+}
+.data__num {
+  text-align: right;
+}
+
+/* A rehearsal must never be mistaken for a trade, in the record or on the screen. */
+.tag {
+  display: inline-block;
+  margin-left: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--sp-1);
+}
+.tag--test {
+  background: var(--c-mode-dry-bg);
+  color: var(--c-mode-dry);
+}
+
+/* ---- the engine's activity list --------------------------------------------------- */
+
+.activity {
+  list-style: none;
+  margin: var(--sp-0);
+  padding: var(--sp-0);
+  display: flex;
+  flex-direction: column;
+}
+.activity__row {
+  padding: var(--sp-2) var(--sp-0);
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  color: var(--c-text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+}
+.activity__row:last-child {
+  border-bottom: none;
+}
+/* A refusal is the ordinary case and must not shout; a fill and a failure must. */
+.activity__row--refused,
+.activity__row--seen {
+  color: var(--c-text-muted);
+}
+.activity__row--entered,
+.activity__row--exited {
+  color: var(--c-text-primary);
+}
+.activity__row--failed,
+.activity__row--trouble,
+.activity__row--gap {
+  color: var(--c-warn);
 }
 
 /* ---- the feed table --------------------------------------------------------------- */
@@ -583,6 +700,9 @@
   background: var(--c-bg-sunken);
   border-radius: var(--r-pill);
   overflow: hidden;
+}
+.bar--slim {
+  height: var(--sp-2);
 }
 .bar__fill {
   display: block;

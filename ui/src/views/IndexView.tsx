@@ -10,23 +10,17 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  api,
-  events,
-  hasBackend,
-  type DonePayload,
-  type IndexStatus,
-  type ProgressPayload,
-} from "../ipc";
+import { api, hasBackend, type IndexStatus } from "../ipc";
 import { bytes, count, duration, hours } from "../format";
 import { useApp } from "../store";
 import { Empty } from "../components/Empty";
 
 export function IndexView() {
-  const { setError, refreshStatus } = useApp();
+  // Progress and the finished-run banner live in the store, not here: the run outlives
+  // this component, and state kept here would vanish every time the user looked at
+  // another view. The shell subscribes; this view reads.
+  const { setError, indexProgress: progress, indexDone: done, setIndexDone } = useApp();
   const [status, setStatus] = useState<IndexStatus | null>(null);
-  const [progress, setProgress] = useState<ProgressPayload | null>(null);
-  const [done, setDone] = useState<DonePayload | null>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -43,18 +37,10 @@ export function IndexView() {
     void load();
   }, [load]);
 
+  // Coverage is re-read when a run finishes, wherever the user was standing when it did.
   useEffect(() => {
-    if (!hasBackend()) return;
-    const unlisten = [events.indexProgress(setProgress), events.indexDone((d) => {
-      setDone(d);
-      setProgress(null);
-      void load();
-      void refreshStatus();
-    })];
-    return () => {
-      unlisten.forEach((p) => void p.then((f) => f()));
-    };
-  }, [load, refreshStatus]);
+    if (done) void load();
+  }, [done, load]);
 
   if (!hasBackend()) {
     return <Empty title="No backend" note="Run the desktop app to index." />;
@@ -86,7 +72,7 @@ export function IndexView() {
           className="btn btn--primary"
           disabled={running}
           onClick={() => {
-            setDone(null);
+            setIndexDone(null);
             const f = from.trim() ? Number(from) : null;
             const t = to.trim() ? Number(to) : null;
             api.startIndex(f, t).catch((e) => setError(e));
@@ -114,6 +100,10 @@ export function IndexView() {
             {count(progress.rows_written)} rows
             {progress.eta_secs !== null && ` · eta ${duration(progress.eta_secs)}`}
           </div>
+          <p className="note">
+            The percentage weights the four phases by what they actually cost, so it moves
+            unevenly on purpose. The trade scan is the long one.
+          </p>
         </section>
       )}
 

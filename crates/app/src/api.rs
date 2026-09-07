@@ -65,6 +65,8 @@ pub struct Status {
     /// The wallet a saved key derives, as a `0x` string, or `None` when none is set.
     /// Never the key itself.
     pub wallet: Option<String>,
+    /// Whether the sniper is running right now.
+    pub engine_running: bool,
 }
 
 pub fn status(state: &AppState) -> Status {
@@ -87,6 +89,7 @@ pub fn status(state: &AppState) -> Status {
         explorer: quarrel_chain::addr::EXPLORER.to_string(),
         has_saved_strategy: state.has_saved_strategy(),
         wallet: state.wallet().map(|a| format!("{a:#x}")),
+        engine_running: state.engine().is_running(),
     }
 }
 
@@ -382,22 +385,155 @@ pub fn pass_count(state: &AppState, config: &StrategyConfig) -> Result<PassCount
 
 /// Open and closed positions (spec §8, view 2).
 ///
-/// Empty until phase 6, and the emptiness is explained rather than left to look like a
-/// loading state that never resolves.
+/// Read from `live.db`, so they survive a restart and a session that crashed holding
+/// something can be found rather than guessed at.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Positions {
-    pub open: Vec<serde_json::Value>,
-    pub closed: Vec<serde_json::Value>,
+    pub open: Vec<PositionRow>,
+    pub closed: Vec<PositionRow>,
+    /// What is going on, when there is nothing to show. Never left blank: an empty list
+    /// with no explanation reads as a loading state that never resolves.
     pub note: String,
+    /// Refusals grouped by rule, commonest first — the answer to "why did nothing fire".
+    pub refusals: Vec<RefusalCount>,
+    pub refusals_total: u64,
 }
 
-pub fn positions(_state: &AppState) -> Positions {
+/// One position, with money as decimal strings.
+///
+/// `U256` does not fit a JavaScript number and rounding a balance on the way to a screen
+/// is exactly the quiet wrongness §12 forbids, so nothing here is a float.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PositionRow {
+    pub token: String,
+    pub symbol: String,
+    pub pair: String,
+    pub opened_at: u64,
+    pub closed_at: Option<u64>,
+    pub cost_wei: String,
+    pub proceeds_wei: String,
+    pub tokens_held: String,
+    pub remaining_bps: u32,
+    /// The last mark, in basis points of what the remainder cost. 10000 is break-even.
+    pub mult_bps: Option<u64>,
+    /// The best mark seen. **Not profit**: it is what the position was worth at its best
+    /// moment, and the UI must never present it as money made (spec §5.4).
+    pub peak_bps: u64,
+    pub close_reason: Option<String>,
+    /// True when no transaction was ever sent for this position, because the session was
+    /// a rehearsal. Carried so a TEST row can never be read as a trade.
+    pub simulated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefusalCount {
+    pub rule: String,
+    pub count: u64,
+}
+
+pub fn positions(state: &AppState) -> Positions {
+    let running = state.engine().is_running();
+    let session = state.engine().session_id();
+
+    let journal = match quarrel_store::Journal::open(state.journal_path()) {
+        Ok(j) => j,
+        Err(e) => {
+            return Positions {
+                open: Vec::new(),
+                closed: Vec::new(),
+                note: format!("could not open the trade journal: {e}"),
+                refusals: Vec::new(),
+                refusals_total: 0,
+            };
+        }
+    };
+
+    let (open, closed) = match session {
+        Some(id) => {
+            let all = journal.positions(id, false).unwrap_or_default();
+            let mut open = Vec::new();
+            let mut closed = Vec::new();
+            for p in all {
+                let row = position_row(&journal, &p);
+                if p.is_open() {
+                    open.push(row)
+                } else {
+                    closed.push(row)
+                }
+            }
+            (open, closed)
+        }
+        // No session this run: still show anything left open by an earlier one, because a
+        // position the program forgot is a position the user still owns.
+        None => (
+            journal
+                .all_open_positions()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| position_row(&journal, p))
+                .collect(),
+            Vec::new(),
+        ),
+    };
+
+    let (refusals, refusals_total) = match session {
+        Some(id) => {
+            let by_rule = journal.refusals_by_rule(id).unwrap_or_default();
+            let total = by_rule.iter().map(|(_, n)| n).sum();
+            (
+                by_rule
+                    .into_iter()
+                    .map(|(rule, count)| RefusalCount { rule, count })
+                    .collect(),
+                total,
+            )
+        }
+        None => (Vec::new(), 0),
+    };
+
+    let note = if running {
+        String::new()
+    } else if !open.is_empty() {
+        "The engine is not running. These positions were left open by an earlier session \
+         and are not being watched: nothing will exit them until it starts again."
+            .into()
+    } else if state.mode().is_none() {
+        "Choose a mode before starting the engine.".into()
+    } else {
+        "The engine is not running. Press p to start it.".into()
+    };
+
     Positions {
-        open: Vec::new(),
-        closed: Vec::new(),
-        note: "No engine is running. The sniper, its positions and its exits arrive in \
-               phase 6; nothing in this build can sign a transaction."
-            .into(),
+        open,
+        closed,
+        note,
+        refusals,
+        refusals_total,
+    }
+}
+
+fn position_row(journal: &quarrel_store::Journal, p: &quarrel_store::Position) -> PositionRow {
+    // A position is a rehearsal when nothing was ever sent for it. Derived from the fills
+    // rather than from the mode, so a row read back later still tells the truth about
+    // itself.
+    let simulated = journal
+        .fills(p.id)
+        .map(|f| !f.is_empty() && f.iter().all(|x| x.tx_hash.is_none()))
+        .unwrap_or(false);
+    PositionRow {
+        token: format!("{:#x}", p.token),
+        symbol: p.symbol.clone(),
+        pair: p.pair.clone(),
+        opened_at: p.opened_at,
+        closed_at: p.closed_at,
+        cost_wei: p.cost_wei.to_string(),
+        proceeds_wei: p.proceeds_wei.to_string(),
+        tokens_held: p.tokens_held.to_string(),
+        remaining_bps: p.remaining_bps(),
+        mult_bps: p.last_mark_bps,
+        peak_bps: p.peak_bps,
+        close_reason: p.close_reason.clone(),
+        simulated,
     }
 }
 
@@ -507,14 +643,79 @@ mod tests {
         assert!(!s.can_spend, "and nothing can spend before the choice");
     }
 
+    /// An empty list must say why it is empty. Silence reads as a loading state that
+    /// never resolves, which is the failure spec §3.4 is about.
     #[test]
     fn positions_explain_their_emptiness() {
         let d = std::env::temp_dir().join("quarrel-api-pos");
+        let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let p = positions(&state_with(&d));
         assert!(p.open.is_empty());
-        assert!(p.note.contains("phase 6"));
-        assert!(p.note.contains("cannot sign") || p.note.contains("nothing in this build"));
+        assert!(p.closed.is_empty());
+        assert!(
+            p.note.contains("Choose a mode") || p.note.contains("not running"),
+            "an empty list has to say why: {}",
+            p.note
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Positions left open by a session that is no longer running are still shown, and the
+    /// note says they are not being watched: a position the program forgot is a position
+    /// the user still owns.
+    #[test]
+    fn positions_left_open_by_a_dead_session_are_surfaced_and_flagged() {
+        let d = std::env::temp_dir().join("quarrel-api-pos-orphan");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        {
+            let mut j = quarrel_store::Journal::open(d.join("live.db")).unwrap();
+            let s = j
+                .begin_session(&quarrel_store::NewSession {
+                    mode: "test".into(),
+                    wallet: alloy_primitives::Address::repeat_byte(1),
+                    started_at: 1,
+                    session_budget_wei: alloy_primitives::U256::from(1u64),
+                    size_per_buy_wei: alloy_primitives::U256::from(1u64),
+                    position_cap_wei: alloy_primitives::U256::from(1u64),
+                    max_open_positions: 1,
+                    strategy_json: "{}".into(),
+                })
+                .unwrap();
+            let pos = j
+                .open_position(&quarrel_store::NewPosition {
+                    session_id: s,
+                    token: alloy_primitives::Address::repeat_byte(9),
+                    curve: alloy_primitives::Address::repeat_byte(8),
+                    symbol: "ORPH".into(),
+                    pair: "ETH".into(),
+                    opened_at: 2,
+                    launch_block: 100,
+                })
+                .unwrap();
+            j.record_fill(&quarrel_store::journal::Fill {
+                position_id: pos,
+                at: 3,
+                side: quarrel_store::types::Side::Buy,
+                quote_wei: alloy_primitives::U256::from(1u64),
+                tokens: alloy_primitives::U256::from(10u64),
+                tx_hash: None,
+                venue: "curve".into(),
+                rule: "entry".into(),
+                detail: String::new(),
+                snipe_tax_wei: None,
+                tax_bps_at_decision: None,
+                gas_wei: None,
+            })
+            .unwrap();
+        }
+        let p = positions(&state_with(&d));
+        assert_eq!(p.open.len(), 1);
+        assert_eq!(p.open[0].symbol, "ORPH");
+        assert!(p.open[0].simulated, "no transaction was ever sent for it");
+        assert!(p.note.contains("not being watched"), "{}", p.note);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

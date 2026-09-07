@@ -18,17 +18,27 @@
 #![forbid(unsafe_code)]
 
 pub mod briefing;
+pub mod engine;
+pub mod enrich;
 pub mod entry;
+pub mod exec;
 pub mod exits;
 pub mod guards;
 pub mod route;
+pub mod seen;
 pub mod session;
 pub mod signer;
+pub mod watch;
 
 pub use briefing::Briefing;
+pub use engine::{Engine, EngineConfig, Event};
+pub use enrich::{ChainState, Reading};
 pub use entry::{Achieved, Schedule, Step, TaxReport};
+pub use exec::{ExecError, Filled, Order};
 pub use exits::{Exit, Mark};
 pub use guards::{Budget, Refused, Spend};
 pub use route::{PoolKey, Route};
+pub use seen::{Coverage, Seen};
 pub use session::{Mode, Session, SessionError};
 pub use signer::{KeySigner, NoSigner, Signer, SignerError, TxRequest, keystore};
+pub use watch::{Launch, Sighting, WatchConfig, Watcher};

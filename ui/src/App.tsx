@@ -11,7 +11,8 @@
  */
 
 import { useEffect } from "react";
-import { hasBackend } from "./ipc";
+import { events, hasBackend } from "./ipc";
+import { count, duration } from "./format";
 import { useApp, VIEWS } from "./store";
 import { ModeBadge } from "./components/ModeBadge";
 import { Feed } from "./views/Feed";
@@ -24,14 +25,60 @@ import { Onboarding } from "./views/Onboarding";
 import { ChooseMode } from "./views/ChooseMode";
 
 export function App() {
-  const { view, setView, status, refreshStatus, loadStrategy, error, setError } = useApp();
+  const {
+    view,
+    setView,
+    status,
+    refreshStatus,
+    loadStrategy,
+    error,
+    setError,
+    indexProgress,
+    setIndexProgress,
+    setIndexDone,
+    pushEngineEvent,
+    toggleEngine,
+  } = useApp();
 
   useEffect(() => {
     void refreshStatus();
     void loadStrategy();
   }, [refreshStatus, loadStrategy]);
 
-  // Numbers switch views; the rest is handled by whichever view owns the shortcut.
+  // The index runs in the backend and outlives any view (spec §4.2), so the shell is what
+  // listens. Subscribing here rather than in the Index view is what lets the progress bar
+  // survive a view change, and what makes a running index visible from every screen.
+  useEffect(() => {
+    if (!hasBackend()) return;
+    const unlisten = [
+      events.indexProgress(setIndexProgress),
+      events.indexDone((d) => {
+        setIndexDone(d);
+        void refreshStatus();
+      }),
+    ];
+    return () => {
+      unlisten.forEach((p) => void p.then((f) => f()));
+    };
+  }, [setIndexProgress, setIndexDone, refreshStatus]);
+
+  // The engine outlives every view, so the shell is what listens (spec §4.2). Switching
+  // screens mid-session must not lose what happened while you were on another one.
+  useEffect(() => {
+    if (!hasBackend()) return;
+    const unlisten = [
+      events.engine(pushEngineEvent),
+      events.engineStopped(() => {
+        void refreshStatus();
+      }),
+    ];
+    return () => {
+      unlisten.forEach((p) => void p.then((f) => f()));
+    };
+  }, [pushEngineEvent, refreshStatus]);
+
+  // Numbers switch views; `p` starts and stops the engine. The rest is handled by
+  // whichever view owns the shortcut.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
@@ -39,6 +86,11 @@ export function App() {
       }
       // Not while a decision screen is up: there is nothing to switch to yet.
       if (useApp.getState().status?.mode == null) return;
+      if (e.key === "p") {
+        e.preventDefault();
+        void toggleEngine();
+        return;
+      }
       const hit = VIEWS.find((v) => v.key === e.key);
       if (hit) {
         e.preventDefault();
@@ -47,7 +99,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setView]);
+  }, [setView, toggleEngine]);
 
   // The mode comes first: nothing else should be reachable before the user has said
   // whether this session can spend money.
@@ -115,18 +167,75 @@ export function App() {
         </main>
       </div>
 
+      {/* The error and the live strip sit side by side rather than taking turns. An
+          error is sticky until dismissed, so letting it win the whole bar means a
+          five-minute-old failure hides a running index and a running engine — which is
+          how you end up staring at a screen that looks idle while it is working. */}
       <footer className="statusbar">
-        {error ? (
+        {error && (
           <button type="button" className="statusbar__error" onClick={() => setError(null)}>
             {error} — click to dismiss
           </button>
+        )}
+        <span className="topbar__spacer" />
+        {indexProgress ? (
+          <IndexPulse />
+        ) : status?.engine_running ? (
+          <EnginePulse />
         ) : (
-          <span className="statusbar__note">
-            {status?.engine ?? "starting"}
-          </span>
+          !error && <span className="statusbar__note">{status?.engine ?? "starting"}</span>
         )}
       </footer>
     </div>
+  );
+}
+
+/**
+ * The running index, in the one strip that is on screen whatever view is showing.
+ *
+ * Clicking it goes to the Index view, which has the phase detail. The percentage is the
+ * indexer's own four-phase weighted figure, not a spinner: a bar that moves at a rate
+ * unrelated to the work left is worse than no bar, because it is read as a promise.
+ */
+function IndexPulse() {
+  const { indexProgress: p, setView } = useApp();
+  if (!p) return null;
+  return (
+    <button type="button" className="statusbar__index" onClick={() => setView("index")}>
+      <span className="statusbar__index-label">indexing · {p.phase}</span>
+      <span className="bar bar--slim">
+        <span className="bar__fill" style={{ width: `${p.percent_x10 / 10}%` }} />
+      </span>
+      <span className="mono statusbar__index-figures">
+        {(p.percent_x10 / 10).toFixed(1)}% · {count(p.rows_written)} rows
+        {p.eta_secs !== null && ` · eta ${duration(p.eta_secs)}`}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The running engine, in the strip that is on screen whatever view is showing.
+ *
+ * Shows the last health pulse, because a feed that has gone quiet because the endpoint is
+ * refusing looks exactly like a feed that is quiet because nobody is launching anything —
+ * and only one of those is worth doing something about.
+ */
+function EnginePulse() {
+  const { pulse, activity, setView } = useApp();
+  const last = activity.find((e) => e.kind !== "seen");
+  return (
+    <button type="button" className="statusbar__index" onClick={() => setView("positions")}>
+      <span className="statusbar__index-label">
+        <span className="pulse pulse--live" /> engine running
+      </span>
+      <span className="mono statusbar__index-figures">
+        {pulse
+          ? `head ${count(pulse.head)} · ${pulse.behind_blocks} behind · ${pulse.latency_ms} ms · ${count(pulse.watched)} launches seen`
+          : "waiting for the first sweep"}
+        {last?.kind === "trouble" && " · feed trouble"}
+      </span>
+    </button>
   );
 }
 

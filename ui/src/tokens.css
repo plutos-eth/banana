@@ -118,6 +118,9 @@
   /* ---- layout ----------------------------------------------------------------- */
   --w-sidebar: 180px;
   --w-drawer: 480px;
+  /* The index strip in the status bar: wide enough to read, short of crowding out
+     the engine line beside it. */
+  --w-statusbar-bar: 320px;
   --h-topbar: 36px;
   --h-statusbar: 24px;
 

@@ -67,8 +67,8 @@ export function ChooseMode() {
         >
           <span className="chooser__label">LIVE</span>
           <span className="chooser__body">
-            Real money. Entries are signed and sent, inside the session budget. Needs
-            <span className="mono"> PRIVATE_KEY</span> in <span className="mono">.env</span>.
+            Real money. Entries are signed and sent, inside the session budget. Needs a
+            private key saved in Settings.
           </span>
         </button>
       </div>

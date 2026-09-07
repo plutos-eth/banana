@@ -11,6 +11,7 @@ pub mod abi;
 pub mod addr;
 pub mod doctor;
 pub mod gate;
+pub mod launch_log;
 pub mod launch_tx;
 pub mod rpc;
 pub mod transport;

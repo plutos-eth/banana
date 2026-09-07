@@ -176,29 +176,23 @@ fn topic_address(l: &RawLog, i: usize) -> Option<Address> {
     l.topics.get(i).map(|t| Address::from_slice(&t.0[12..]))
 }
 
+/// Adapt the shared decoder to the store's row type.
+///
+/// The decoding itself lives in `quarrel_chain::launch_log` because the sniper reads the
+/// same event, and one event decoded two ways is a bug waiting for whichever half is
+/// exercised less.
 fn decode_launch_log(l: &RawLog) -> Option<LaunchRow> {
-    let token = topic_address(l, 1)?;
-    let curve = topic_address(l, 2)?;
-    let deployer = topic_address(l, 3)?;
-    // Non-indexed: pairToken, launchConfigId, graduationThreshold.
-    let words: Vec<U256> = l
-        .data
-        .chunks_exact(32)
-        .map(|c| U256::from_be_slice(c))
-        .collect();
-    if words.len() < 3 {
-        return None;
-    }
+    let d = quarrel_chain::launch_log::decode(l)?;
     Some(LaunchRow {
-        token,
-        curve,
-        deployer,
-        pair_token: Address::from_slice(&words[0].to_be_bytes::<32>()[12..]),
-        launch_config_id: words[1].try_into().unwrap_or(0),
-        graduation_threshold: words[2],
-        block: l.block_number,
-        tx_hash: l.tx_hash,
-        log_index: l.log_index,
+        token: d.token,
+        curve: d.curve,
+        deployer: d.deployer,
+        pair_token: d.pair_token,
+        launch_config_id: d.launch_config_id,
+        graduation_threshold: d.graduation_threshold,
+        block: d.block,
+        tx_hash: d.tx_hash,
+        log_index: d.log_index,
     })
 }
 

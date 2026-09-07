@@ -15,6 +15,21 @@ crate-type = ["lib"]
 name = "quarrel-desktop"
 path = "src/main.rs"
 
+[features]
+# Tauri decides between "load the frontend from the dev server" and "load the frontend
+# that is compiled into me" from this feature, and nothing else: `tauri-build` sets its
+# `dev` cfg to exactly `not(custom-protocol)`.
+#
+# It is **on by default** here because the deliverable is an executable the user
+# double-clicks. Without it a `cargo build --release` produces a binary that shows a blank
+# window unless a Vite dev server happens to be running on port 5173 — which is a broken
+# program that looks fine on the machine it was built on.
+#
+# For frontend hot-reload, build with `--no-default-features` and run `npm run dev` in
+# `ui/` alongside it.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { workspace = true }
 

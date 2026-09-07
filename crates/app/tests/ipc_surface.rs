@@ -47,7 +47,10 @@ fn invoked() -> BTreeSet<String> {
 
 /// Event names the backend emits, and the ones the frontend listens for.
 fn emitted() -> BTreeSet<String> {
-    let src = read("src/indexing.rs");
+    // Every file that emits. Scraping one of them was enough while the index was the only
+    // long-running job; the engine is a second one, and a listener that drifted from it
+    // would leave a running sniper silent on screen.
+    let src = format!("{}{}", read("src/indexing.rs"), read("src/sniper.rs"));
     let mut out = BTreeSet::new();
     for (i, _) in src.match_indices("emit(") {
         let rest = &src[i..];
@@ -110,7 +113,7 @@ fn every_event_the_backend_emits_is_listened_for() {
     assert!(!emitted.is_empty(), "found no emitted events");
     assert_eq!(
         emitted, listened,
-        "the index progress events and the listeners for them have drifted apart"
+        "the events the backend emits and the listeners for them have drifted apart"
     );
 }
 

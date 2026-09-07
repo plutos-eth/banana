@@ -11,7 +11,24 @@
  */
 
 import { create } from "zustand";
-import { api, hasBackend, type StrategyConfig, type Status } from "./ipc";
+import {
+  api,
+  hasBackend,
+  type DonePayload,
+  type EngineEvent,
+  type Positions,
+  type ProgressPayload,
+  type StrategyConfig,
+  type Status,
+} from "./ipc";
+
+/**
+ * How many engine events are kept.
+ *
+ * A session runs for hours and sees a launch every few seconds, so this is a window, not
+ * a log — the journal in `live.db` is the record, and it keeps everything.
+ */
+export const ACTIVITY_CAP = 500;
 
 export type ViewId = "feed" | "positions" | "lab" | "index" | "rules" | "status";
 
@@ -40,6 +57,38 @@ interface AppStore {
   loadStrategy: () => Promise<void>;
   saveDraft: () => Promise<void>;
   revertDraft: () => void;
+
+  /**
+   * The running index, or `null` when none is.
+   *
+   * Shared rather than local to the Index view for two reasons. An index takes tens of
+   * minutes, so a user who switches views mid-run would otherwise see no sign it is
+   * happening; and the events fire whether or not that view is mounted, so state kept
+   * there is lost on every view change and only reappears at the next event.
+   */
+  indexProgress: ProgressPayload | null;
+  /** The outcome of the last index this session, shown until another starts. */
+  indexDone: DonePayload | null;
+  setIndexProgress: (p: ProgressPayload | null) => void;
+  setIndexDone: (d: DonePayload | null) => void;
+
+  /**
+   * What the engine has said, newest first, capped at {@link ACTIVITY_CAP}.
+   *
+   * Held here rather than in a view because the engine outlives any view: switching
+   * screens mid-session must not lose the record of what happened while you were away.
+   */
+  activity: EngineEvent[];
+  /** The last health pulse, so a quiet feed can be told from a broken one. */
+  pulse: Extract<EngineEvent, { kind: "health" }> | null;
+  pushEngineEvent: (e: EngineEvent) => void;
+  clearActivity: () => void;
+
+  /** Positions as `live.db` has them. Re-read whenever the engine moves one. */
+  positions: Positions | null;
+  refreshPositions: () => Promise<void>;
+  /** Start the engine if it is stopped, stop it if it is running. */
+  toggleEngine: () => Promise<void>;
 
   /** Set by the Feed's `f` shortcut; read by the Feed. */
   passingOnly: boolean;
@@ -93,6 +142,50 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
   revertDraft: () => set((s) => ({ draft: s.saved, dirty: false })),
+
+  indexProgress: null,
+  indexDone: null,
+  setIndexProgress: (indexProgress) => set({ indexProgress }),
+  setIndexDone: (indexDone) => set({ indexDone, indexProgress: null }),
+
+  activity: [],
+  pulse: null,
+  pushEngineEvent: (e) =>
+    set((s) => ({
+      // The pulse is separate: it fires every poll and would otherwise crowd every
+      // launch, refusal and fill out of the window within seconds.
+      pulse: e.kind === "health" ? e : s.pulse,
+      activity:
+        e.kind === "health" ? s.activity : [e, ...s.activity].slice(0, ACTIVITY_CAP),
+    })),
+  clearActivity: () => set({ activity: [] }),
+
+  positions: null,
+  refreshPositions: async () => {
+    if (!hasBackend()) return;
+    try {
+      set({ positions: await api.positions() });
+    } catch (e) {
+      get().setError(e);
+    }
+  },
+  toggleEngine: async () => {
+    if (!hasBackend()) return;
+    try {
+      if (get().status?.engine_running) {
+        await api.stopEngine();
+      } else {
+        // Clearing first means the activity list belongs to the run you are watching,
+        // rather than mixing two sessions into one scroll.
+        set({ activity: [], pulse: null });
+        await api.startEngine();
+      }
+      await get().refreshStatus();
+      await get().refreshPositions();
+    } catch (e) {
+      get().setError(e);
+    }
+  },
 
   passingOnly: false,
   togglePassingOnly: () => set((s) => ({ passingOnly: !s.passingOnly })),

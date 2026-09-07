@@ -18,13 +18,15 @@
 #![forbid(unsafe_code)]
 
 pub mod history;
+pub mod journal;
 pub mod lab;
 pub mod lock;
 pub mod schema;
 pub mod sql;
 pub mod types;
 
-pub use history::{History, PendingCalldata};
+pub use history::{DeployerSeen, History, PendingCalldata};
+pub use journal::{Journal, NewPosition, NewSession, Position, Refusal};
 pub use lab::{Candidate, Outcome, Window};
 pub use lock::{Lock, LockError};
 pub use sql::{SqlFilter, push_down};

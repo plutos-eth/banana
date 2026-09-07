@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The smallest set of Tauri core permissions the window needs. Without a capability file the frontend is granted nothing at all: our own #[tauri::command] handlers still answer, because application commands are not gated, but every core plugin call is denied. That is why event listeners silently received nothing and the index progress bar never moved. Only listen and unlisten are granted: the frontend has to receive index progress and engine events, and it has no reason to be able to emit them. Everything else the UI needs goes through a named command in crates/app/src/commands.rs, which is the trust surface the ipc_surface test measures.",
+  "windows": ["main"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

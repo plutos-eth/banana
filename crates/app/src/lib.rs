@@ -12,6 +12,7 @@ use tauri::Manager;
 pub mod api;
 pub mod commands;
 pub mod indexing;
+pub mod sniper;
 pub mod state;
 
 pub use state::{AppError, AppState, Mode};
@@ -70,6 +71,8 @@ pub fn run() {
             commands::start_index,
             commands::open_explorer,
             commands::choose_mode,
+            commands::start_engine,
+            commands::stop_engine,
             commands::save_key,
             commands::clear_key,
         ])

@@ -4002,6 +4002,8 @@ dependencies = [
  "alloy-signer",
  "alloy-signer-local",
  "alloy-sol-types",
+ "async-trait",
+ "quarrel-backtest",
  "quarrel-chain",
  "quarrel-core",
  "quarrel-store",
