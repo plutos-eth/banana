@@ -6,14 +6,22 @@
  * `getComputedStyle` — PLAN.md F8 — so the later design pass changes one token and both
  * the CSS and the virtualiser follow. There is no pixel value in this file.
  *
- * This is the indexed window, not a live tail: what the engine is seeing right now is in
- * Positions, beside the positions and refusals it produced.
- * The distinction is stated in the view rather than left for the user to discover.
+ * Two lists, and the difference between them is stated rather than left to be discovered:
+ *
+ * * **Live** — what the running engine is seeing *now*, newest first, arriving as it
+ *   happens. Nothing here is in the store yet; it exists only for this session.
+ * * **Indexed** — the window `history.db` covers, evaluated by the saved strategy. This is
+ *   the one that is virtualised, searchable and rankable, because it is thousands of rows.
+ *
+ * Collapsing them into one list was the obvious thing and it is wrong: a row in the first
+ * has no outcome and never will until it is indexed, and a row in the second is a fact
+ * about the past. Showing them as one would make "decision" mean two different things in
+ * the same column.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { api, hasBackend, type FeedPage, type FeedRow } from "../ipc";
+import { api, hasBackend, type EngineEvent, type FeedPage, type FeedRow } from "../ipc";
 import { bps, clock, count, shortHex } from "../format";
 import { useApp } from "../store";
 import { rowHeight } from "../rowHeight";
@@ -34,8 +42,103 @@ import { Empty } from "../components/Empty";
  */
 type Order = "time" | "rank";
 
+/**
+ * How many live rows are drawn.
+ *
+ * A tail, not an archive: the store keeps 500 events and `live.db` keeps every one, so
+ * this is only about how much of it is worth having on screen at once.
+ */
+const LIVE_CAP = 40;
+
+/** One token as the running engine has seen it, folded from its events. */
+interface LiveRow {
+  token: string;
+  symbol: string;
+  block: number | null;
+  ageMs: number | null;
+  status: "seen" | "refused" | "waiting" | "entered" | "exited" | "failed";
+  rule: string;
+  detail: string;
+  /** Position in the activity list, so the newest stays at the top. */
+  seq: number;
+}
+
+const HAS_TOKEN = ["seen", "refused", "waiting", "entered", "exited", "failed"];
+
+/**
+ * Fold the engine's event stream into one row per token.
+ *
+ * The stream is newest-first, so the **first** event met for a token is its current state
+ * and every later one only fills in what is still missing — the symbol comes from the
+ * refusal, the block and the age from the sighting that preceded it.
+ */
+function foldLive(activity: EngineEvent[]): LiveRow[] {
+  const byToken = new Map<string, LiveRow>();
+  activity.forEach((e, i) => {
+    if (!HAS_TOKEN.includes(e.kind)) return;
+    const token = (e as { token: string }).token;
+    let row = byToken.get(token);
+    if (!row) {
+      row = {
+        token,
+        symbol: "",
+        block: null,
+        ageMs: null,
+        status: e.kind as LiveRow["status"],
+        rule: "",
+        detail: "",
+        seq: i,
+      };
+      byToken.set(token, row);
+    }
+    switch (e.kind) {
+      case "seen":
+        if (row.block === null) {
+          row.block = e.block;
+          row.ageMs = e.age_ms;
+        }
+        break;
+      case "refused":
+        if (!row.symbol) row.symbol = e.symbol;
+        if (!row.rule) {
+          row.rule = e.rule;
+          row.detail = e.detail;
+        }
+        break;
+      case "waiting":
+        if (!row.symbol) row.symbol = e.symbol;
+        if (!row.detail) {
+          row.detail = `passed every rule; waiting for the opening tax to fall from ${e.tax_bps} bps`;
+        }
+        break;
+      case "entered":
+        if (!row.symbol) row.symbol = e.symbol;
+        if (!row.detail) {
+          row.detail = `${e.simulated ? "would have bought" : "bought"} at ${e.tax_bps} bps tax`;
+        }
+        break;
+      case "exited":
+        if (!row.symbol) row.symbol = e.symbol;
+        if (!row.rule) {
+          row.rule = e.rule;
+          row.detail = e.detail;
+        }
+        break;
+      case "failed":
+        if (!row.symbol) row.symbol = e.symbol;
+        if (!row.detail) row.detail = e.detail;
+        break;
+    }
+  });
+  return [...byToken.values()].sort((a, b) => a.seq - b.seq);
+}
+
+/** Whether a live row got past the entry filter. */
+const passedFilter = (r: LiveRow) =>
+  r.status === "waiting" || r.status === "entered" || r.status === "exited";
+
 export function Feed() {
-  const { passingOnly, togglePassingOnly, setError } = useApp();
+  const { passingOnly, togglePassingOnly, setError, activity, status } = useApp();
   const [order, setOrder] = useState<Order>("time");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState<FeedPage | null>(null);
@@ -43,6 +146,10 @@ export function Feed() {
   const [selected, setSelected] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Derived from the engine's own event stream, which the shell keeps in the store so it
+  // survives a view change. No second subscription and no second source of truth.
+  const live = useMemo(() => foldLive(activity), [activity]);
 
   const load = useCallback(async () => {
     if (!hasBackend()) return;
@@ -138,6 +245,12 @@ export function Feed() {
         </button>
       </div>
 
+      <LiveTail
+        rows={live}
+        running={status?.engine_running === true}
+        passingOnly={passingOnly}
+      />
+
       {page?.truncated && (
         <div className="banner banner--info">
           Showing the newest {count(page.scanned)} launches. The store holds more; the
@@ -145,8 +258,8 @@ export function Feed() {
         </div>
       )}
       <div className="banner banner--info">
-        These are indexed launches evaluated by the saved strategy, not a live tail. What
-        the engine is seeing right now is in Positions.
+        Below is the <b>indexed</b> window, evaluated by the saved strategy — the past, with
+        outcomes. The live tail above is this session only and is not in the store.
       </div>
 
       {!hasBackend() ? (
@@ -236,4 +349,103 @@ function Row({
       </span>
     </button>
   );
+}
+
+/**
+ * What the engine is seeing right now.
+ *
+ * Deliberately not virtualised and deliberately capped: this is a tail, not an archive.
+ * The archive is the table underneath, and the whole record is in `live.db`.
+ */
+function LiveTail({
+  rows,
+  running,
+  passingOnly,
+}: {
+  rows: LiveRow[];
+  running: boolean;
+  passingOnly: boolean;
+}) {
+  const shown = (passingOnly ? rows.filter(passedFilter) : rows).slice(0, LIVE_CAP);
+
+  if (!running && rows.length === 0) {
+    return (
+      <div className="banner banner--info">
+        The engine is not running, so there is no live tail. Press <kbd className="kbd">p</kbd>{" "}
+        to start it — in TEST it runs every step and stops at the signature.
+      </div>
+    );
+  }
+
+  return (
+    <section className="live">
+      <div className="live__head">
+        <span className="live__title">
+          <span className={`pulse ${running ? "pulse--live" : "pulse--dead"}`} /> live
+        </span>
+        <span className="toolbar__note">
+          {running
+            ? `${count(rows.length)} launches this session, newest first`
+            : "the engine has stopped; these are what it saw"}
+        </span>
+      </div>
+      {shown.length === 0 ? (
+        <p className="note">
+          {passingOnly
+            ? "Nothing has passed the filter yet this session. Press f to see every launch."
+            : "Watching. Launches arrive every few seconds."}
+        </p>
+      ) : (
+        <div className="datawrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th className="data__num">age</th>
+                <th>symbol</th>
+                <th>token</th>
+                <th className="data__num">block</th>
+                <th>decision</th>
+                <th>why</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={r.token} className={`live__row live__row--${r.status}`}>
+                  <td className="data__num mono">{r.ageMs === null ? "" : `${r.ageMs} ms`}</td>
+                  <td className="mono">{r.symbol || "…"}</td>
+                  <td className="mono note">{shortHex(r.token)}</td>
+                  <td className="data__num mono">{r.block === null ? "" : count(r.block)}</td>
+                  <td className="mono">{decisionOf(r)}</td>
+                  <td className="note">{r.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The decision in one word, plus the rule that produced it.
+ *
+ * "reading" is a real state and not a blank: a launch whose enrichment is still in flight
+ * has not been refused, and showing nothing there would read as one.
+ */
+function decisionOf(r: LiveRow): string {
+  switch (r.status) {
+    case "seen":
+      return "reading";
+    case "refused":
+      return `refused · ${r.rule}`;
+    case "waiting":
+      return "passed";
+    case "entered":
+      return "bought";
+    case "exited":
+      return `sold · ${r.rule}`;
+    case "failed":
+      return "failed";
+  }
 }

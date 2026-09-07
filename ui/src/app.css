@@ -400,6 +400,48 @@
   color: var(--c-mode-dry);
 }
 
+/* ---- the live tail at the top of the feed ----------------------------------------- */
+
+.live {
+  flex: none;
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  border-bottom: var(--bw-thin) solid var(--c-border-strong);
+  background: var(--c-bg-sunken);
+  /* A tail is for glancing at, not scrolling through; the archive is underneath. */
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.live__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.live__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--c-text-primary);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--sp-1);
+}
+/* The same colours the decision column uses in the indexed table, so "refused" means the
+   same thing in both lists. */
+.live__row--refused td {
+  color: var(--c-refuse);
+}
+.live__row--seen td {
+  color: var(--c-pending);
+}
+.live__row--waiting td,
+.live__row--entered td {
+  color: var(--c-pass);
+}
+.live__row--failed td {
+  color: var(--c-warn);
+}
+
 /* ---- the engine's activity list --------------------------------------------------- */
 
 .activity {
