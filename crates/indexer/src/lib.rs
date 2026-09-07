@@ -11,3 +11,9 @@
 //! | D | block-timestamp anchors | very low |
 
 #![forbid(unsafe_code)]
+
+pub mod chunking;
+pub mod progress;
+
+pub use chunking::{Chunker, ChunkerConfig, Range};
+pub use progress::{Phase, Progress, ProgressEvent};

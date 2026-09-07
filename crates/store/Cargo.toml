@@ -12,3 +12,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 alloy-primitives = { workspace = true }
+rusqlite = { workspace = true }
+fs4 = { workspace = true }

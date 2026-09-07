@@ -56,6 +56,12 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 
+# SQLite only, deliberately (spec sec.4.1). `bundled` avoids depending on a system
+# libsqlite3, which on Windows there is not one of.
+rusqlite = { version = "0.37", features = ["bundled"] }
+# Cross-platform advisory file locks, for the per-database writer lock of PLAN.md C3.
+fs4 = "0.13"
+
 [profile.release]
 opt-level = 3
 lto = "thin"
