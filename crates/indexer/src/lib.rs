@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod chunking;
+pub mod outcomes;
 pub mod progress;
 
 pub use chunking::{Chunker, ChunkerConfig, Range};
