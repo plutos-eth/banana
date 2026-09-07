@@ -447,6 +447,11 @@ async fn main() -> Result<()> {
                 pct(d.undecodable, d.launches)
             );
             println!(
+                "  via a bundler        {} ({:.1}%)",
+                d.bundled,
+                pct(d.bundled, d.launches)
+            );
+            println!(
                 "  migrated             {} ({:.2}%, 1 in {})",
                 d.migrated,
                 pct(d.migrated, d.launches),

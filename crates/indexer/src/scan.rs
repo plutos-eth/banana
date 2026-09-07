@@ -10,7 +10,9 @@ use quarrel_chain::abi::{IPonsCurve, IPonsFactory};
 use quarrel_chain::gate::{Priority, RpcError};
 use quarrel_chain::rpc::{Client, LogFilter, RawLog};
 use quarrel_chain::{addr, launch_tx};
-use quarrel_store::history::{EnrichmentRow, History, LaunchRow, PhaseState, TradeRow};
+use quarrel_store::history::{
+    EnrichmentRow, History, LaunchRow, PendingCalldata, PhaseState, TradeRow,
+};
 use quarrel_store::types::Side;
 
 use crate::chunking::{Chunker, ChunkerConfig, Range};
@@ -325,12 +327,14 @@ pub async fn scan_calldata(
         // against 319 ms sequential). `Client` is cheap to clone -- the gate is shared --
         // so each fetch runs as its own task.
         let mut set = tokio::task::JoinSet::new();
-        for (token, tx_hash, curve) in batch {
+        for pending in batch {
             let client = client.clone();
-            let (token, tx_hash, curve) = (*token, *tx_hash, *curve);
+            let pending = *pending;
             set.spawn(async move {
-                let tx = client.get_transaction(tx_hash, Priority::Bulk).await;
-                (token, tx_hash, curve, tx)
+                let tx = client
+                    .get_transaction(pending.tx_hash, Priority::Bulk)
+                    .await;
+                (pending, tx)
             });
         }
         let mut results = Vec::with_capacity(batch.len());
@@ -343,20 +347,18 @@ pub async fn scan_calldata(
         }
 
         let mut rows = Vec::new();
-        for (token, tx_hash, curve, tx) in results {
+        for (pending, tx) in results {
             let tx = match tx {
                 Ok(Some(tx)) => tx,
                 // A launch whose transaction cannot be read still gets a row, with
                 // everything Unknown. Dropping it would remove it from the universe for a
                 // reason that is about our reader rather than about the token.
                 _ => {
-                    rows.push(unknown_enrichment(token, "unreadable transaction"));
+                    rows.push(unknown_enrichment(pending.token, "unreadable transaction"));
                     continue;
                 }
             };
-            rows.push(build_enrichment(
-                history, token, tx_hash, curve, &tx.input, supply,
-            )?);
+            rows.push(build_enrichment(history, pending, &tx.input, supply)?);
         }
         written += history.insert_enrichment(&rows)? as u64;
         progress.advance(Phase::Calldata, batch.len() as u64, rows.len() as u64);
@@ -391,13 +393,19 @@ fn unknown_enrichment(token: Address, why: &str) -> EnrichmentRow {
 
 fn build_enrichment(
     history: &History,
-    token: Address,
-    launch_tx: B256,
-    curve: Address,
+    p: PendingCalldata,
     input: &[u8],
     supply: U256,
 ) -> Result<EnrichmentRow> {
     use quarrel_chain::launch_tx::{LaunchMeta, sanitise_for_display};
+
+    let PendingCalldata {
+        token,
+        tx_hash: launch_tx,
+        curve,
+        ordinal,
+        total,
+    } = p;
 
     // Ground truth for the dev buy, whichever route created the token: the CurveBuy the
     // launch transaction itself emitted. Independent of whether the calldata decoded.
@@ -422,12 +430,22 @@ fn build_enrichment(
         .and_then(|v| v.try_into().ok())
     });
 
-    let meta = launch_tx::decode_launch(input);
+    // `ordinal` and `total` matter only for a bundler that launched several tokens at
+    // once. The decoder refuses to guess when the frames it finds do not match the events.
+    let meta = launch_tx::decode_launch_at(input, ordinal, total);
+    // The transaction's OWN selector, whether or not the launch call was nested inside it.
+    // It used to be hard-coded to launchAndBuy for anything that decoded, which made a
+    // bundler-routed launch indistinguishable from a direct one -- and going through a
+    // bundler is a fact about the launch worth keeping (spec §11's farm detection).
+    let outer = input
+        .get(..4)
+        .map(|b| format!("0x{}", alloy_primitives::hex::encode(b)));
+
     Ok(match meta {
         LaunchMeta::Decoded(c) => EnrichmentRow {
             token,
             decoded: true,
-            selector: Some("0xf85f8e41".into()),
+            selector: outer,
             // Attacker-chosen strings: strip anything that can misrepresent itself before
             // it is stored, let alone rendered.
             name: Some(sanitise_for_display(&c.name)),

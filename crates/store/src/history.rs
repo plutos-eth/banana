@@ -696,12 +696,23 @@ impl History {
 
     /// Launches with no enrichment row yet, so a resumed calldata phase does not refetch
     /// what it already has.
-    pub fn launches_needing_calldata(&self) -> Result<Vec<(Address, B256, Address)>> {
+    pub fn launches_needing_calldata(&self) -> Result<Vec<PendingCalldata>> {
+        // The ordinal is computed over EVERY launch in the transaction, not just the ones
+        // still missing enrichment. Partitioning over the pending set would renumber a
+        // half-finished transaction on the next run and hand a launch the wrong frame.
         let mut stmt = self.conn.prepare(
-            "SELECT l.token, l.tx_hash, l.curve
-             FROM launches l LEFT JOIN enrichment e ON e.token = l.token
+            "WITH ordered AS (
+                 SELECT token, tx_hash, curve,
+                        row_number() OVER (PARTITION BY tx_hash ORDER BY log_index) - 1
+                            AS ordinal,
+                        count(*)     OVER (PARTITION BY tx_hash) AS total,
+                        block
+                 FROM launches
+             )
+             SELECT o.token, o.tx_hash, o.curve, o.ordinal, o.total
+             FROM ordered o LEFT JOIN enrichment e ON e.token = o.token
              WHERE e.token IS NULL
-             ORDER BY l.block",
+             ORDER BY o.block",
         )?;
         let rows = stmt
             .query_map([], |r| {
@@ -709,11 +720,21 @@ impl History {
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, i64>(4)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows.into_iter()
-            .map(|(t, h, c)| Ok((parse_addr(&t)?, parse_hash(&h)?, parse_addr(&c)?)))
+            .map(|(t, h, c, ordinal, total)| {
+                Ok(PendingCalldata {
+                    token: parse_addr(&t)?,
+                    tx_hash: parse_hash(&h)?,
+                    curve: parse_addr(&c)?,
+                    ordinal: ordinal.max(0) as usize,
+                    total: total.max(1) as usize,
+                })
+            })
             .collect()
     }
 
@@ -860,6 +881,22 @@ impl History {
         )?;
         Ok(())
     }
+}
+
+/// A launch whose transaction has not been read yet.
+///
+/// `ordinal` and `total` place it among the launches in its own transaction. A bundler can
+/// launch several tokens at once — three transactions did so in a measured 24-hour window —
+/// and without the position the decoder cannot tell which nested call belongs to which.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingCalldata {
+    pub token: Address,
+    pub tx_hash: B256,
+    pub curve: Address,
+    /// Zero-based position among the launches in this transaction, by log index.
+    pub ordinal: usize,
+    /// How many launches the transaction produced.
+    pub total: usize,
 }
 
 /// A launch reduced to what feature and outcome computation need.
@@ -1115,6 +1152,109 @@ mod tests {
         sell.side = Side::Sell;
         h.insert_trades(&[sell]).unwrap();
         assert_eq!(h.dev_buy(curve, launch_tx).unwrap(), None);
+    }
+
+    /// A bundler that launches several tokens at once needs each launch's position, or the
+    /// decoder cannot tell which nested call belongs to which event.
+    #[test]
+    fn pending_calldata_numbers_each_launch_within_its_transaction() {
+        let mut h = History::in_memory().unwrap();
+        let tx = B256::repeat_byte(7);
+        for (i, log_index) in [9u64, 3, 6].into_iter().enumerate() {
+            h.insert_launches(&[LaunchRow {
+                token: addr(20 + i as u8),
+                curve: addr(40 + i as u8),
+                deployer: addr(1),
+                pair_token: Address::ZERO,
+                launch_config_id: 0,
+                graduation_threshold: U256::from(1u64),
+                block: 100,
+                tx_hash: tx,
+                log_index,
+            }])
+            .unwrap();
+        }
+        // A fourth launch, alone in its own transaction.
+        h.insert_launches(&[LaunchRow {
+            token: addr(30),
+            curve: addr(50),
+            deployer: addr(1),
+            pair_token: Address::ZERO,
+            launch_config_id: 0,
+            graduation_threshold: U256::from(1u64),
+            block: 101,
+            tx_hash: B256::repeat_byte(8),
+            log_index: 0,
+        }])
+        .unwrap();
+
+        let pending = h.launches_needing_calldata().unwrap();
+        assert_eq!(pending.len(), 4);
+
+        let bundled: Vec<_> = pending.iter().filter(|p| p.tx_hash == tx).collect();
+        assert!(bundled.iter().all(|p| p.total == 3));
+        // Ordered by log index, so the ordinal matches the order the events were emitted.
+        let mut by_ordinal: Vec<_> = bundled.iter().map(|p| (p.ordinal, p.token)).collect();
+        by_ordinal.sort();
+        assert_eq!(
+            by_ordinal,
+            vec![(0, addr(21)), (1, addr(22)), (2, addr(20))],
+            "log_index 3, 6, 9 -> ordinal 0, 1, 2"
+        );
+
+        let alone = pending.iter().find(|p| p.token == addr(30)).unwrap();
+        assert_eq!((alone.ordinal, alone.total), (0, 1));
+    }
+
+    /// The renumbering trap: a half-enriched transaction must not shift its ordinals.
+    #[test]
+    fn the_ordinal_is_computed_over_every_launch_not_only_the_pending_ones() {
+        let mut h = History::in_memory().unwrap();
+        let tx = B256::repeat_byte(7);
+        for (i, log_index) in [0u64, 1].into_iter().enumerate() {
+            h.insert_launches(&[LaunchRow {
+                token: addr(20 + i as u8),
+                curve: addr(40 + i as u8),
+                deployer: addr(1),
+                pair_token: Address::ZERO,
+                launch_config_id: 0,
+                graduation_threshold: U256::from(1u64),
+                block: 100,
+                tx_hash: tx,
+                log_index,
+            }])
+            .unwrap();
+        }
+        // The first of the two already has its calldata read.
+        h.insert_enrichment(&[EnrichmentRow {
+            token: addr(20),
+            decoded: true,
+            selector: None,
+            name: None,
+            symbol: None,
+            description: None,
+            logo: None,
+            twitter_url: None,
+            website_url: None,
+            telegram_url: None,
+            socials: quarrel_core::features::Socials::NONE,
+            exempt_wallets: Some(0),
+            creator_fee_recipient: None,
+            creator_tax_bps: Some(0),
+            declared_quote_in: None,
+            dev_buy_quote: None,
+            dev_buy_tokens: None,
+            dev_buy_bps: None,
+        }])
+        .unwrap();
+
+        let pending = h.launches_needing_calldata().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            (pending[0].ordinal, pending[0].total),
+            (1, 2),
+            "still the second of two, not the first of one"
+        );
     }
 
     #[test]

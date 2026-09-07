@@ -71,10 +71,16 @@ The desktop app is the primary surface. These exist for scripting and long unatt
 none of them requires a key:
 
 ```
-quarrel doctor [--probe]              verify chain id, contract addresses, factory parameters
+quarrel doctor [--probe]                verify chain id, contract addresses, factory parameters
 quarrel index [--from --to | --update]  backfill or append; resumable
-quarrel backtest <strategy.json>      run a saved strategy over the local store
+quarrel verify [--limit N]              check the indexed data against itself
+quarrel backtest [--strategy FILE]      run a strategy over the local store
+quarrel backtest --print-default        write the baseline strategy to stdout, to edit
 ```
+
+`backtest` takes the built-in baseline of the specification's section 7.1 when given no file, and
+prints the funnel, the sample gate and the holding assumptions exactly as the Strategy Lab shows
+them. `--json` gives the same result as a document. Neither command touches the network.
 
 ## Safety
 

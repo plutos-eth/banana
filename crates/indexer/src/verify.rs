@@ -75,6 +75,11 @@ pub struct Distributions {
     pub observed_entries: u64,
     pub reconstructed_entries: u64,
     pub undecodable: u64,
+    /// Decoded, but only by finding the launch call nested inside a bundler's calldata.
+    ///
+    /// Its own number because it is a fact about the launch, not about our decoder: going
+    /// through a bundler is the behaviour spec §11's farm detection is looking for.
+    pub bundled: u64,
     pub migrated: u64,
     /// Launches with no post-entry trade at all.
     pub no_post_entry_trades: u64,
@@ -137,6 +142,20 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
         [],
         |r| r.get::<_, i64>(0),
     )? as u64;
+    // Anything that decoded but whose transaction selector is not itself a launch route
+    // got there through a nested frame. The route list comes from the ABI rather than from
+    // hex literals here: writing them out is how the three-argument `launchToken` -- 23% of
+    // launches -- ended up counted as a bundler on the first attempt at this number.
+    let routes = quarrel_chain::launch_tx::launch_selectors_hex();
+    let holes = vec!["?"; routes.len()].join(", ");
+    let bundled = conn.query_row(
+        &format!(
+            "SELECT count(*) FROM enrichment
+             WHERE decoded = 1 AND selector NOT IN ({holes})"
+        ),
+        rusqlite::params_from_iter(routes.iter()),
+        |r| r.get::<_, i64>(0),
+    )? as u64;
     let migrated = conn.query_row(
         "SELECT count(*) FROM outcomes WHERE migrated = 1",
         [],
@@ -171,6 +190,7 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
         observed_entries,
         reconstructed_entries,
         undecodable,
+        bundled,
         migrated,
         no_post_entry_trades,
         no_entry,

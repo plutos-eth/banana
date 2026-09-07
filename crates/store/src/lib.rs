@@ -24,7 +24,7 @@ pub mod schema;
 pub mod sql;
 pub mod types;
 
-pub use history::History;
+pub use history::{History, PendingCalldata};
 pub use lab::{Candidate, Outcome, Window};
 pub use lock::{Lock, LockError};
 pub use sql::{SqlFilter, push_down};
