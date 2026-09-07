@@ -79,13 +79,13 @@ where
                     },
                 )?;
             }
-            Err(RpcError::TooManyResults { limit }) => {
-                // Not a rate limit: no amount of waiting fixes it, only a smaller range.
+            // Two different ways of saying "this range is too expensive", handled
+            // identically: waiting cannot fix either, only a smaller range can.
+            Err(RpcError::TooManyResults { .. }) | Err(RpcError::QueryTimedOut { .. }) => {
                 tracing::debug!(
                     from = range.from,
                     to = range.to,
-                    limit,
-                    "range exceeds the result cap, splitting"
+                    "range too expensive for the endpoint, splitting"
                 );
                 if !chunker.too_many_results(range) {
                     return Err(ScanError::Unsplittable { block: range.from });

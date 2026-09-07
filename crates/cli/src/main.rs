@@ -443,6 +443,19 @@ async fn main() -> Result<()> {
             row("max multiple (bps)", d.max_multiple_p);
             row("5m multiple (bps)", d.mult_5m_p);
             row("deployer depth (blk)", d.depth_p);
+            row("time to peak (s)", d.time_to_ath_p);
+            row("trailing silence (blk)", d.quiet_blocks_p);
+            println!();
+            println!(
+                "  never traded above entry   {} ({:.1}%)",
+                d.never_above_entry,
+                pct(d.never_above_entry, d.launches)
+            );
+            println!(
+                "  below entry at 5 minutes   {} ({:.1}%)",
+                d.below_entry_at_5m,
+                pct(d.below_entry_at_5m, d.launches)
+            );
             Ok(())
         }
     }

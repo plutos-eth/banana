@@ -91,6 +91,15 @@ pub struct Distributions {
     /// Percentiles of `deployer_history_depth_blocks`.
     pub depth_p: [u64; 5],
     pub twins_nonzero: u64,
+    /// Percentiles of `time_to_ath_s`, for deriving the maturity cutoff: a token cannot
+    /// be judged before it has had time to peak.
+    pub time_to_ath_p: [u64; 5],
+    /// Percentiles of blocks of silence at the end of the window, for deriving `died`.
+    pub quiet_blocks_p: [u64; 5],
+    /// Tokens whose peak is exactly their entry: they never traded above it.
+    pub never_above_entry: u64,
+    /// Tokens whose 5-minute multiple is below entry.
+    pub below_entry_at_5m: u64,
 }
 
 /// 10th, 25th, 50th, 75th, 90th.
@@ -179,6 +188,23 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
         depth_p: percentiles(col(
             "SELECT deployer_history_depth_blocks FROM pit_features",
         )?),
+        time_to_ath_p: percentiles(col(
+            "SELECT time_to_ath_s FROM outcomes WHERE time_to_ath_s IS NOT NULL",
+        )?),
+        quiet_blocks_p: percentiles(col(
+            "SELECT (SELECT max(block) FROM trades) - last_trade_block FROM outcomes
+             WHERE last_trade_block IS NOT NULL",
+        )?),
+        never_above_entry: conn.query_row(
+            "SELECT count(*) FROM outcomes WHERE max_multiple_bps = 10000",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64,
+        below_entry_at_5m: conn.query_row(
+            "SELECT count(*) FROM outcomes WHERE mult_after_5m_bps < 10000",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64,
     })
 }
 

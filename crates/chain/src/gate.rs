@@ -154,6 +154,14 @@ pub enum RpcError {
     /// generic error is how an indexer ends up looking like it has hung.
     #[error("query matched more than {limit} logs; split the block range")]
     TooManyResults { limit: u64 },
+    /// The endpoint gave up on the query before answering.
+    ///
+    /// A sibling of [`RpcError::TooManyResults`] and handled the same way: the range is too
+    /// expensive, and retrying it unchanged just times out again. Seen in the wild as
+    /// `-32000: log query timed out` on a topic-only trade scan over a busy stretch, where
+    /// it aborted an index that was 7% done.
+    #[error("the endpoint timed out on this query ({detail}); split the block range")]
+    QueryTimedOut { detail: String },
     #[error(
         "no configured endpoint serves {method} (eth_getLogs needs one that allows it; set RPC_URL)"
     )]
@@ -558,6 +566,9 @@ impl Inner {
                     // Not a rate limit. Hand it straight back so the caller can split.
                     return Err(RpcError::TooManyResults { limit });
                 }
+                if query_timed_out(&message) {
+                    return Err(RpcError::QueryTimedOut { detail: message });
+                }
                 if code == 429 {
                     self.note_refusal();
                     *self.cooldown_until.lock().await = Some(Instant::now() + self.config.cooldown);
@@ -608,6 +619,16 @@ impl Drop for Slot<'_> {
 fn is_challenge(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     lower.contains("just a moment") || lower.contains("cloudflare") || lower.contains("challenge")
+}
+
+/// Recognise a server-side give-up on an over-large query.
+///
+/// Deliberately narrow: a *connection* timeout is a transient network problem worth
+/// retrying, whereas the endpoint deciding the query itself is too expensive is not.
+fn query_timed_out(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    (lower.contains("query") || lower.contains("log"))
+        && (lower.contains("timed out") || lower.contains("timeout"))
 }
 
 /// Recognise the result cap. Measured message:
@@ -1022,6 +1043,33 @@ mod tests {
         assert_eq!(eps.len(), 1);
         assert!(!eps[0].logs, "publicnode never serves logs");
         assert_eq!(eps[0].label, "publicnode");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_query_timeout_is_surfaced_for_splitting_not_retried() {
+        // Measured in the wild: `-32000: log query timed out` on a topic-only trade scan.
+        // Retrying the same range just times out again; only a smaller range helps.
+        let g = gate(
+            MockTransport::with_body(
+                r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"log query timed out"}}"#,
+            ),
+            fast_config(),
+        );
+        let err = g
+            .call("eth_getLogs", serde_json::json!([{}]), Priority::Bulk)
+            .await
+            .expect_err("must surface");
+        assert!(matches!(err, RpcError::QueryTimedOut { .. }), "{err}");
+    }
+
+    #[test]
+    fn a_query_timeout_is_told_apart_from_a_connection_timeout() {
+        assert!(query_timed_out("log query timed out"));
+        assert!(query_timed_out("query timeout exceeded"));
+        // A transient network stall is worth retrying, so it must not be mistaken for a
+        // range that is too expensive.
+        assert!(!query_timed_out("connection timed out"));
+        assert!(!query_timed_out("execution reverted"));
     }
 
     #[test]
