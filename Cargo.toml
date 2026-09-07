@@ -44,6 +44,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # U256 and Address. Pure types: no network, no I/O. `core` may depend on this.
 alloy-primitives = { version = "1", features = ["serde"] }
 
+# Pure, no I/O: `core` may depend on it for keyword rules.
+regex = "1"
+
 [profile.release]
 opt-level = 3
 lto = "thin"

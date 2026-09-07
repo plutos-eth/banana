@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/ui/post_entry_facts_are_unreachable_from_a_filter.rs:23:29
+   |
+23 |     let _ = filter.evaluate(&future);
+   |                    -------- ^^^^^^^ expected `&PitFeatures`, found `&PostEntryFacts`
+   |                    |
+   |                    arguments to this method are incorrect
+   |
+   = note: expected reference `&PitFeatures`
+              found reference `&PostEntryFacts`
+note: method defined here
+  --> src/filter.rs
+   |
+   |     pub fn evaluate(&self, f: &PitFeatures) -> Decision {
+   |            ^^^^^^^^
