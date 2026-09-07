@@ -13,8 +13,12 @@
 #![forbid(unsafe_code)]
 
 pub mod chunking;
+pub mod features;
 pub mod outcomes;
 pub mod progress;
+pub mod run;
+pub mod scan;
 
 pub use chunking::{Chunker, ChunkerConfig, Range};
 pub use progress::{Phase, Progress, ProgressEvent};
+pub use run::{IndexPlan, IndexReport};

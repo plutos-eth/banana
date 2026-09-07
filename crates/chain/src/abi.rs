@@ -53,6 +53,27 @@ sol! {
             bool enabled;
         }
 
+        struct Socials {
+            string twitter;
+            string telegram;
+            string discord;
+            string website;
+            string farcaster;
+        }
+
+        struct TokenParams {
+            string name;
+            string symbol;
+            string logo;
+            string description;
+            Socials socials;
+            address creatorFeeRecipient;
+            uint16 creatorTaxBps;
+            bool buybackEnabled;
+            bytes32 expectedEconomics;
+            bytes32 salt;
+        }
+
         function getLaunchedToken(address token) external view returns (LaunchedToken);
         function getLaunchConfig(uint256 id) external view returns (LaunchConfig);
         function pairTokenEconomics(address pairToken) external view
@@ -146,6 +167,43 @@ sol! {
 }
 
 sol! {
+    /// The three-argument `launchToken`, selector `0xf35abbcf`.
+    ///
+    /// Its own interface rather than an overload beside the four-argument form: `sol!`
+    /// would then generate suffixed names, and two plainly-named calls are easier to read
+    /// at the call site than `launchToken_0Call`.
+    #[derive(Debug)]
+    interface IPonsFactoryNoExempt {
+        struct Socials {
+            string twitter;
+            string telegram;
+            string discord;
+            string website;
+            string farcaster;
+        }
+
+        struct TokenParams {
+            string name;
+            string symbol;
+            string logo;
+            string description;
+            Socials socials;
+            address creatorFeeRecipient;
+            uint16 creatorTaxBps;
+            bool buybackEnabled;
+            bytes32 expectedEconomics;
+            bytes32 salt;
+        }
+
+        function launchToken(
+            TokenParams params,
+            uint256 launchConfigId,
+            address pairToken
+        ) external payable returns (address token, address curve);
+    }
+}
+
+sol! {
     /// The pons token. `getTokenInfo` returns **current** state, so it is used only for
     /// live display and never as a filter input -- see `docs/FINDINGS.md` §4.
     #[derive(Debug)]
@@ -206,6 +264,26 @@ sol! {
             address recipient,
             address[] snipeTaxExemptions
         ) external payable returns (address token, address curve, uint256 tokensOut);
+
+        /// Launch without an opening buy. Sent to the **factory** address, not the router;
+        /// it is declared here because it takes the identical `TokenParams`, and `sol!`
+        /// types are per-interface.
+        ///
+        /// Not in the reference implementation's ABI, and measured to be the *dominant*
+        /// route: 47% of launches in a 20,000-block sample, against 35% for
+        /// `launchAndBuy`. Recovered by matching keccak against the observed selector
+        /// `0xa72101af` after the calldata layout showed the same `TokenParams` followed by
+        /// a config id, an address and a dynamic array.
+        ///
+        /// Decoding it matters because it carries the same point-in-time metadata: without
+        /// it, two launches in three would have `socials = Unknown` for a reason about our
+        /// decoder rather than about the token.
+        function launchToken(
+            TokenParams params,
+            uint256 launchConfigId,
+            address pairToken,
+            address[] snipeTaxExemptions
+        ) external payable returns (address token, address curve);
     }
 }
 

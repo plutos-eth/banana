@@ -609,6 +609,205 @@ impl History {
             _ => None,
         })
     }
+
+    // --- queries the indexer needs ------------------------------------------------------
+    //
+    // These live here rather than in `quarrel-indexer` because spec §4.1 puts every query
+    // behind the store's API: analytics belong in SQL, and a columnar backend must be
+    // addable later without touching callers.
+
+    /// Every launch in ascending block order.
+    ///
+    /// The order is not a convenience. The point-in-time feature builder depends on seeing
+    /// launches oldest-first, because that is what makes it structurally unable to read
+    /// the future.
+    pub fn all_launches_lite(&self) -> Result<Vec<LaunchLite>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT token, curve, deployer, block, tx_hash FROM launches ORDER BY block, token",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|(t, c, d, b, h)| {
+                Ok(LaunchLite {
+                    token: parse_addr(&t)?,
+                    curve: parse_addr(&c)?,
+                    deployer: parse_addr(&d)?,
+                    block: b as u64,
+                    tx_hash: parse_hash(&h)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Launches with no enrichment row yet, so a resumed calldata phase does not refetch
+    /// what it already has.
+    pub fn launches_needing_calldata(&self) -> Result<Vec<(Address, B256, Address)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT l.token, l.tx_hash, l.curve
+             FROM launches l LEFT JOIN enrichment e ON e.token = l.token
+             WHERE e.token IS NULL
+             ORDER BY l.block",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|(t, h, c)| Ok((parse_addr(&t)?, parse_hash(&h)?, parse_addr(&c)?)))
+            .collect()
+    }
+
+    /// Every token that graduated, and the block it did so.
+    ///
+    /// The block matters: a graduation is only visible to a launch that came after it.
+    pub fn graduation_blocks(&self) -> Result<std::collections::HashMap<Address, u64>> {
+        let mut stmt = self.conn.prepare("SELECT token, block FROM graduations")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|(t, b)| Ok((parse_addr(&t)?, b)))
+            .collect()
+    }
+
+    pub fn upsert_pit_features(&self, p: &PitFeaturesRow) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO pit_features
+               (token, deployer_launches, deployer_graduations, deployer_grad_rate_bps,
+                fingerprint, fingerprint_twins_30m, deployer_history_depth_blocks)
+             VALUES (?1,?2,?3,?4,?5,?6,?7)
+             ON CONFLICT(token) DO UPDATE SET
+               deployer_launches = excluded.deployer_launches,
+               deployer_graduations = excluded.deployer_graduations,
+               deployer_grad_rate_bps = excluded.deployer_grad_rate_bps,
+               fingerprint = excluded.fingerprint,
+               fingerprint_twins_30m = excluded.fingerprint_twins_30m,
+               deployer_history_depth_blocks = excluded.deployer_history_depth_blocks",
+            params![
+                addr_key(p.token),
+                p.deployer_launches as i64,
+                p.deployer_graduations as i64,
+                p.deployer_grad_rate_bps.map(|v| v as i64),
+                p.fingerprint,
+                p.fingerprint_twins_30m as i64,
+                p.deployer_history_depth_blocks as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn upsert_outcome(&self, o: &OutcomeRow) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO outcomes
+               (token, entry_rule, entry_block, entry_price, entry_tokens,
+                ath_price, ath_block, max_multiple_bps, time_to_ath_s,
+                mult_after_5m_bps, mult_after_30m_bps, migrated, died,
+                distinct_buyers_1m, every_early_buy_taxed,
+                post_entry_trades, last_trade_block, observed_blocks)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+             ON CONFLICT(token) DO UPDATE SET
+               entry_rule = excluded.entry_rule,
+               entry_block = excluded.entry_block,
+               entry_price = excluded.entry_price,
+               entry_tokens = excluded.entry_tokens,
+               ath_price = excluded.ath_price,
+               ath_block = excluded.ath_block,
+               max_multiple_bps = excluded.max_multiple_bps,
+               time_to_ath_s = excluded.time_to_ath_s,
+               mult_after_5m_bps = excluded.mult_after_5m_bps,
+               mult_after_30m_bps = excluded.mult_after_30m_bps,
+               migrated = excluded.migrated,
+               died = excluded.died,
+               distinct_buyers_1m = excluded.distinct_buyers_1m,
+               every_early_buy_taxed = excluded.every_early_buy_taxed,
+               post_entry_trades = excluded.post_entry_trades,
+               last_trade_block = excluded.last_trade_block,
+               observed_blocks = excluded.observed_blocks",
+            params![
+                addr_key(o.token),
+                o.entry_rule as i64,
+                o.entry_block.map(|v| v as i64),
+                o.entry_price.map(|v| u256_to_blob(v).to_vec()),
+                o.entry_tokens.map(|v| u256_to_blob(v).to_vec()),
+                o.ath_price.map(|v| u256_to_blob(v).to_vec()),
+                o.ath_block.map(|v| v as i64),
+                o.max_multiple_bps.map(|v| v as i64),
+                o.time_to_ath_s.map(|v| v as i64),
+                o.mult_after_5m_bps.map(|v| v as i64),
+                o.mult_after_30m_bps.map(|v| v as i64),
+                o.migrated as i64,
+                o.died as i64,
+                o.distinct_buyers_1m.map(|v| v as i64),
+                o.every_early_buy_taxed.map(|v| v as i64),
+                o.post_entry_trades as i64,
+                o.last_trade_block.map(|v| v as i64),
+                o.observed_blocks as i64,
+            ],
+        )?;
+        Ok(())
+    }
+}
+
+/// A launch reduced to what feature and outcome computation need.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchLite {
+    pub token: Address,
+    pub curve: Address,
+    pub deployer: Address,
+    pub block: u64,
+    pub tx_hash: B256,
+}
+
+/// One `pit_features` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PitFeaturesRow {
+    pub token: Address,
+    pub deployer_launches: u32,
+    pub deployer_graduations: u32,
+    pub deployer_grad_rate_bps: Option<u32>,
+    pub fingerprint: String,
+    pub fingerprint_twins_30m: u32,
+    pub deployer_history_depth_blocks: u64,
+}
+
+/// One `outcomes` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutcomeRow {
+    pub token: Address,
+    pub entry_rule: crate::types::EntryRule,
+    pub entry_block: Option<u64>,
+    pub entry_price: Option<U256>,
+    pub entry_tokens: Option<U256>,
+    pub ath_price: Option<U256>,
+    pub ath_block: Option<u64>,
+    pub max_multiple_bps: Option<u64>,
+    pub time_to_ath_s: Option<u64>,
+    pub mult_after_5m_bps: Option<u64>,
+    pub mult_after_30m_bps: Option<u64>,
+    pub migrated: bool,
+    pub died: bool,
+    pub distinct_buyers_1m: Option<u32>,
+    pub every_early_buy_taxed: Option<bool>,
+    pub post_entry_trades: u64,
+    pub last_trade_block: Option<u64>,
+    pub observed_blocks: u64,
 }
 
 fn blob(b: &[u8], what: &str) -> Result<U256> {

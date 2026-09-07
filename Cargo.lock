@@ -1958,6 +1958,7 @@ dependencies = [
  "quarrel-chain",
  "quarrel-core",
  "quarrel-store",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror",
