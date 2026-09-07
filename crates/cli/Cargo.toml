@@ -12,6 +12,9 @@ quarrel-store = { workspace = true }
 quarrel-indexer = { workspace = true }
 quarrel-backtest = { workspace = true }
 anyhow = { workspace = true }
+clap = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 

@@ -47,6 +47,15 @@ alloy-primitives = { version = "1", features = ["serde"] }
 # Pure, no I/O: `core` may depend on it for keyword rules.
 regex = "1"
 
+# Typed contract bindings and log decoding via the `sol!` macro. ABI only -- the
+# JSON-RPC layer is ours, so the priority gate can be the single chokepoint every
+# request passes through (spec sec.6.3) and record/replay can sit beneath it.
+alloy-sol-types = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"] }
+async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

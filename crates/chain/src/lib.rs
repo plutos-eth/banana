@@ -6,3 +6,16 @@
 //! It holds no private key and signs nothing; see `quarrel-live` for that.
 
 #![forbid(unsafe_code)]
+
+pub mod abi;
+pub mod addr;
+pub mod doctor;
+pub mod gate;
+pub mod launch_tx;
+pub mod rpc;
+pub mod transport;
+
+pub use gate::{Endpoint, Gate, GateConfig, GateStats, Priority, RpcError};
+pub use launch_tx::{LaunchCalldata, LaunchMeta, decode_launch};
+pub use rpc::{Client, LogFilter, RawLog, TxInfo};
+pub use transport::{LiveTransport, RecordingTransport, ReplayTransport, Transport};
