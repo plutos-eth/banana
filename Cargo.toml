@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/chain",
+    "crates/store",
+    "crates/indexer",
+    "crates/backtest",
+    "crates/live",
+    "crates/app",
+    "crates/cli",
+]
+
+# scratch/bodkin is the MIT reference implementation, cloned for study.
+# It is deliberately not a workspace member and is gitignored.
+exclude = ["scratch"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/igorv/quarrel"
+authors = ["quarrel contributors"]
+
+[workspace.dependencies]
+# --- internal -----------------------------------------------------------------
+# Trust boundary (docs/ARCHITECTURE.md): nothing below `live` may depend on `live`.
+quarrel-core = { path = "crates/core" }
+quarrel-chain = { path = "crates/chain" }
+quarrel-store = { path = "crates/store" }
+quarrel-indexer = { path = "crates/indexer" }
+quarrel-backtest = { path = "crates/backtest" }
+quarrel-live = { path = "crates/live" }
+
+# --- shared -------------------------------------------------------------------
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# U256 and Address. Pure types: no network, no I/O. `core` may depend on this.
+alloy-primitives = { version = "1", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+# The indexer replays hundreds of thousands of curve operations in tests.
+# Unoptimised integer math makes phase 3 unbearable to iterate on.
+[profile.dev.package."*"]
+opt-level = 2

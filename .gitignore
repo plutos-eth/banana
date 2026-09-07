@@ -1,0 +1,17 @@
+# reference implementation, cloned for study, not part of the build
+scratch/
+
+# local data and secrets
+data/
+.env
+
+# rust
+target/
+
+# node / vite
+node_modules/
+ui/dist/
+
+# os / editor
+.idea/
+.DS_Store

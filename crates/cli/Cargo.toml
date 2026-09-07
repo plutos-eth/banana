@@ -1,0 +1,20 @@
+﻿[package]
+name = "quarrel-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+quarrel-core = { workspace = true }
+quarrel-chain = { workspace = true }
+quarrel-store = { workspace = true }
+quarrel-indexer = { workspace = true }
+quarrel-backtest = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "quarrel"
+path = "src/main.rs"

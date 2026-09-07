@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The product is a Windows desktop application, so Windows is the build of record.
+  rust:
+    name: rust (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: fmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
+
+      # Spec sec.3.8 / sec.4: `live` is the only crate that may see a private key, and
+      # `core` must stay offline. Enforced, not documented.
+      - name: trust boundary
+        shell: pwsh
+        run: ./scripts/check-trust-boundary.ps1
+
+  ui:
+    name: ui
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: install
+        working-directory: ui
+        run: npm ci
+
+      - name: typecheck and build
+        working-directory: ui
+        run: npm run build
+
+      # Spec sec.8 (no hard-coded style values) and sec.3.1 (the CSP that makes
+      # attacker-supplied URL fetching impossible rather than merely tested against).
+      - name: ui invariants
+        shell: pwsh
+        run: ./scripts/check-ui-invariants.ps1

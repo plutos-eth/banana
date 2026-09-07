@@ -1,0 +1,4 @@
+# Pinned so CI and local runs never disagree.
+max_width = 100
+edition = "2024"
+newline_style = "Unix"

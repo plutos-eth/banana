@@ -1,0 +1,156 @@
+/*
+ * tokens.css — the single source of every colour, size, radius and font in quarrel.
+ *
+ * Spec §8: the visual style will be replaced in a later pass against design renders.
+ * That pass must be an edit to THIS FILE plus small per-component adjustments, never a
+ * component rewrite. So: no component anywhere may contain a colour literal, a px value,
+ * or a font stack. `scripts/check-no-hardcoded-styles.ps1` enforces this in CI.
+ *
+ * Naming is by ROLE, not by appearance (§8: no `GreenBar`). `--c-gain` is the colour of
+ * a gain; it happens to be green today and the restyle may make it something else
+ * without a single component changing.
+ *
+ * Assumptions baked in here, per §8: dark theme, monospace for anything numeric or
+ * tabular, dense information display.
+ */
+
+:root {
+  /* ---- surfaces, back to front ------------------------------------------------ */
+  --c-bg-base: #0b0d10;
+  --c-bg-sunken: #07090b;
+  --c-bg-raised: #14171c;
+  --c-bg-overlay: #1b1f26;
+  --c-bg-hover: #1f242c;
+  --c-bg-active: #262c36;
+  --c-bg-selected: #1a2530;
+
+  /* ---- text, most to least prominent ------------------------------------------ */
+  --c-text-primary: #e6e9ee;
+  --c-text-secondary: #9aa4b2;
+  --c-text-muted: #5f6875;
+  --c-text-inverse: #0b0d10;
+  --c-text-link: #7cc0ff;
+
+  /* ---- lines ------------------------------------------------------------------ */
+  --c-border: #232830;
+  --c-border-strong: #333a45;
+  --c-border-focus: #4d90d0;
+
+  /* ---- semantic: outcome ------------------------------------------------------ */
+  --c-gain: #46d17f;
+  --c-gain-dim: #1d4a31;
+  --c-loss: #e5484d;
+  --c-loss-dim: #4a1d1f;
+  --c-neutral: #9aa4b2;
+
+  /* ---- semantic: decision ----------------------------------------------------- */
+  --c-pass: #46d17f;
+  --c-refuse: #5f6875;
+  --c-pending: #d9a441;
+
+  /* ---- semantic: operating mode (§3.2 — always visible, never ambiguous) ------- */
+  --c-mode-dry: #4d90d0;
+  --c-mode-dry-bg: #10243a;
+  --c-mode-live: #e5484d;
+  --c-mode-live-bg: #3a1214;
+  --c-mode-armed: #d9a441;
+  --c-mode-armed-bg: #3a2c10;
+
+  /* ---- semantic: severity ----------------------------------------------------- */
+  --c-info: #4d90d0;
+  --c-warn: #d9a441;
+  --c-warn-bg: #2a2110;
+  --c-error: #e5484d;
+  --c-error-bg: #2a1214;
+
+  /* ---- semantic: data quality (§3.3, C4 — derived values are labelled) --------- */
+  --c-approx: #8a7fd0;
+  --c-unknown: #6b7280;
+
+  /* ---- feed health pulse (§8 view 6 — a quiet chain must not look like a dead
+         engine, so the pulse has its own colour and is never reused) ------------- */
+  --c-pulse: #46d17f;
+  --c-pulse-stale: #d9a441;
+  --c-pulse-dead: #e5484d;
+
+  /* ---- type ------------------------------------------------------------------- */
+  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-base: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 24px;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.45;
+
+  /* ---- spacing scale ---------------------------------------------------------- */
+  --sp-0: 0px;
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 6px;
+  --sp-4: 8px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+  --sp-9: 48px;
+
+  /* ---- radii ------------------------------------------------------------------ */
+  --r-none: 0px;
+  --r-sm: 2px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-pill: 999px;
+
+  /* ---- borders ---------------------------------------------------------------- */
+  --bw-thin: 1px;
+  --bw-thick: 2px;
+
+  /* ---- layout ----------------------------------------------------------------- */
+  --w-sidebar: 180px;
+  --w-drawer: 480px;
+  --h-topbar: 36px;
+  --h-statusbar: 24px;
+
+  /* Feed row height. Read by the virtualiser via getComputedStyle (PLAN.md F8) so
+     that no pixel value lives in a component. Changing it here changes both the CSS
+     and the virtualiser's estimateSize. */
+  --h-row: 26px;
+  --h-row-compact: 22px;
+
+  /* ---- motion ----------------------------------------------------------------- */
+  --dur-fast: 80ms;
+  --dur-base: 140ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- elevation -------------------------------------------------------------- */
+  --shadow-drawer: 0 0 24px rgba(0, 0, 0, 0.5);
+  --shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* ---- stacking --------------------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-drawer: 20;
+  --z-popover: 30;
+  --z-toast: 40;
+}
+
+/*
+ * Reduced motion: the feed updates constantly and a user who asked the OS for less
+ * animation should get it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+}

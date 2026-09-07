@@ -1,0 +1,67 @@
+/*
+ * Global element defaults. Every value is a token from tokens.css.
+ * Component styles live beside their components; nothing here is component-specific.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: var(--sp-0);
+  padding: var(--sp-0);
+}
+
+body {
+  background: var(--c-bg-base);
+  color: var(--c-text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  /* The app is a dense terminal, not a document: the window itself never scrolls. */
+  overflow: hidden;
+  /* Selecting text by accident while clicking through a fast-moving feed is noise. */
+  user-select: none;
+}
+
+/* Anything numeric or tabular is monospace (§8). */
+.num,
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+a {
+  color: var(--c-text-link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: var(--bw-thick) solid var(--c-border-focus);
+  outline-offset: var(--sp-1);
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-6);
+}
+.shell__title {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-bold);
+  margin: var(--sp-0);
+}
+.shell__note {
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  margin: var(--sp-0);
+}

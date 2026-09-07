@@ -1,0 +1,41 @@
+﻿{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "quarrel",
+  "version": "0.1.0",
+  "identifier": "dev.quarrel.app",
+  "build": {
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev --prefix ../../ui",
+    "beforeBuildCommand": "npm run build --prefix ../../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "quarrel",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "dangerousDisableAssetCspModification": false,
+      "assetProtocol": {
+        "enable": false
+      }
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.ico"],
+    "copyright": "MIT licensed. Independent of pons, Uniswap and Robinhood.",
+    "shortDescription": "Local sniper terminal and strategy backtester for pons v2.",
+    "longDescription": "quarrel is a local desktop application. It watches pons v2 token launches, evaluates them against a transparent boolean filter, and lets the same filter be backtested against locally indexed on-chain history. Nothing leaves the machine except JSON-RPC to the endpoint the user configured."
+  }
+}
