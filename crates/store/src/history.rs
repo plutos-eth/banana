@@ -623,7 +623,8 @@ impl History {
     /// the future.
     pub fn all_launches_lite(&self) -> Result<Vec<LaunchLite>> {
         let mut stmt = self.conn.prepare(
-            "SELECT token, curve, deployer, block, tx_hash FROM launches ORDER BY block, token",
+            "SELECT token, curve, deployer, block, tx_hash, pair_token, graduation_threshold
+             FROM launches ORDER BY block, token",
         )?;
         let rows = stmt
             .query_map([], |r| {
@@ -633,17 +634,21 @@ impl History {
                     r.get::<_, String>(2)?,
                     r.get::<_, i64>(3)?,
                     r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Vec<u8>>(6)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows.into_iter()
-            .map(|(t, c, d, b, h)| {
+            .map(|(t, c, d, b, h, p, g)| {
                 Ok(LaunchLite {
                     token: parse_addr(&t)?,
                     curve: parse_addr(&c)?,
                     deployer: parse_addr(&d)?,
                     block: b as u64,
                     tx_hash: parse_hash(&h)?,
+                    pair_token: parse_addr(&p)?,
+                    graduation_threshold: blob(&g, "launches.graduation_threshold")?,
                 })
             })
             .collect()
@@ -684,6 +689,58 @@ impl History {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows.into_iter()
             .map(|(t, b)| Ok((parse_addr(&t)?, b)))
+            .collect()
+    }
+
+    /// Distinct pair tokens with no economics row yet.
+    pub fn pair_tokens_needing_economics(&self) -> Result<Vec<Address>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT l.pair_token FROM launches l
+             LEFT JOIN pair_economics p ON p.pair_token = l.pair_token
+             WHERE p.pair_token IS NULL",
+        )?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.iter().map(|s| parse_addr(s)).collect()
+    }
+
+    pub fn upsert_pair_economics(
+        &self,
+        pair_token: Address,
+        phantom_quote: U256,
+        graduation_threshold: U256,
+        decimals: u8,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO pair_economics (pair_token, phantom_quote, graduation_threshold, decimals)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(pair_token) DO UPDATE SET
+               phantom_quote = excluded.phantom_quote,
+               graduation_threshold = excluded.graduation_threshold,
+               decimals = excluded.decimals",
+            params![
+                addr_key(pair_token),
+                u256_to_blob(phantom_quote).as_slice(),
+                u256_to_blob(graduation_threshold).as_slice(),
+                decimals as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Phantom quote per pair token, for replaying curves.
+    pub fn pair_phantoms(&self) -> Result<std::collections::HashMap<Address, U256>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT pair_token, phantom_quote FROM pair_economics")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|(a, b)| Ok((parse_addr(&a)?, blob(&b, "pair_economics.phantom_quote")?)))
             .collect()
     }
 
@@ -773,6 +830,10 @@ pub struct LaunchLite {
     pub deployer: Address,
     pub block: u64,
     pub tx_hash: B256,
+    pub pair_token: Address,
+    /// Per launch, from the `TokenLaunched` event. The phantom reserve derives from it,
+    /// so a curve cannot be replayed without it.
+    pub graduation_threshold: U256,
 }
 
 /// One `pit_features` row.

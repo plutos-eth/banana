@@ -291,7 +291,18 @@ fn find_entry(input: &OutcomeInput<'_>) -> Option<(EntryRule, u64, U256, U256)> 
         return Some((EntryRule::ObservedUntaxedBuy, t.block, price, t.amount_out));
     }
 
-    // Nothing untaxed ever traded. Replay to the end of the window and quote.
+    // Nothing untaxed ever traded, so the entry has to be reconstructed.
+    //
+    // A reconstruction is only as good as the replay under it, so the replay is checked
+    // against reality first: every buy on this curve must reproduce the `tokensOut` its
+    // event recorded. Measured across a real window this holds for 98.9% of buys; where it
+    // does not, no price is emitted at all rather than a plausible wrong one. Those rows
+    // stay in the universe with a null entry and are counted in the funnel, so they are
+    // visibly absent instead of quietly fabricated.
+    if !verify_replay(input.config, input.trades).is_exact() {
+        return None;
+    }
+
     let entry_block = input.launch_block + TAX_WINDOW_BLOCKS;
     let mut state = CurveState::opening(input.config).ok()?;
     for t in input.trades {
@@ -315,13 +326,10 @@ fn find_entry(input: &OutcomeInput<'_>) -> Option<(EntryRule, u64, U256, U256)> 
 /// Advance a replayed curve by one observed trade.
 pub fn apply(state: &mut CurveState, t: &TradeRow) -> Result<(), quarrel_core::curve::CurveError> {
     match t.side {
-        Side::Buy => state.apply_buy(
-            t.amount_in,
-            t.amount_out,
-            t.fee,
-            t.tax,
-            t.snipe_tax.unwrap_or(U256::ZERO),
-        ),
+        // `t.fee` already contains the snipe tax, so it is not deducted again -- see
+        // CurveState::apply_buy. `t.snipe_tax` is kept for the entry rule, where its
+        // presence or absence is what marks the end of the opening-tax window.
+        Side::Buy => state.apply_buy(t.amount_in, t.amount_out, t.fee, t.tax),
         Side::Sell => state.apply_sell(t.amount_in, t.amount_out, t.fee, t.tax),
     }
 }
@@ -362,7 +370,8 @@ pub fn verify_replay(config: &LaunchConfig, trades: &[TradeRow]) -> ReplayCheck 
             s.opening_tax_bps = 0;
             s.creator_tax_bps = 0;
             s.fee_bps = 0;
-            let deducted = t.fee + t.tax + t.snipe_tax.unwrap_or(U256::ZERO);
+            // The event's fee already includes any snipe tax.
+            let deducted = t.fee + t.tax;
             if let Some(net) = t.amount_in.checked_sub(deducted) {
                 match quote_buy(&s, net) {
                     Ok(q) => {
@@ -397,22 +406,91 @@ mod tests {
         LaunchConfig::live_id_0()
     }
 
-    fn buy(block: u64, tx: u8, quote: u64, tokens: u128, snipe: Option<u64>) -> TradeRow {
+    /// Build a buy that is CONSISTENT with the curve, by quoting against the replayed
+    /// state rather than inventing a `tokens_out`.
+    ///
+    /// Invented numbers no longer work, and that is the point: the reconstruction refuses
+    /// to price a curve whose replay does not reproduce reality, so a fixture that is not
+    /// self-consistent is correctly rejected. Building fixtures through the real curve
+    /// makes them realistic as well as accepted.
+    struct Curve {
+        state: CurveState,
+    }
+
+    impl Curve {
+        fn new(cfg: &LaunchConfig) -> Self {
+            Self {
+                state: CurveState::opening(cfg).unwrap(),
+            }
+        }
+
+        /// `snipe_bps` > 0 emits a `SnipeTaxCharged`; note the event's `fee` carries it.
+        fn buy(&mut self, block: u64, tx: u8, quote: u64, snipe_bps: u64) -> TradeRow {
+            let quote_in = U256::from(quote);
+            let curve_fee = quote_in * U256::from(100u64) / U256::from(10_000u64);
+            let snipe = quote_in * U256::from(snipe_bps) / U256::from(10_000u64);
+            let fee = curve_fee + snipe;
+            let net = quote_in - fee;
+            let tokens_out = quarrel_core::curve::amount_out(
+                net,
+                self.state.quote_reserve,
+                self.state.token_reserve,
+            )
+            .unwrap();
+            self.state
+                .apply_buy(quote_in, tokens_out, fee, U256::ZERO)
+                .unwrap();
+            TradeRow {
+                tx_hash: B256::repeat_byte(tx),
+                log_index: 0,
+                curve: addr(9),
+                block,
+                tx_index: 0,
+                side: Side::Buy,
+                actor: addr(tx),
+                recipient: addr(tx),
+                amount_in: quote_in,
+                amount_out: tokens_out,
+                fee,
+                tax: U256::ZERO,
+                snipe_tax: (snipe_bps > 0).then_some(snipe),
+            }
+        }
+    }
+
+    /// A single buy against a fresh curve, for tests that do not need a sequence.
+    fn buy(block: u64, tx: u8, quote: u64, snipe_bps: u64) -> TradeRow {
+        Curve::new(&cfg()).buy(block, tx, quote, snipe_bps)
+    }
+
+    /// A sell that dumps the position for almost nothing, so the price ends far below
+    /// entry. Only observed buys are replay-checked, so exactness is not needed here.
+    fn collapse(b: &TradeRow, block: u64, tx: u8) -> TradeRow {
         TradeRow {
             tx_hash: B256::repeat_byte(tx),
             log_index: 0,
-            curve: addr(9),
             block,
-            tx_index: 0,
-            side: Side::Buy,
+            side: Side::Sell,
             actor: addr(tx),
             recipient: addr(tx),
-            amount_in: U256::from(quote),
-            amount_out: U256::from(tokens),
-            fee: U256::from(quote / 100),
+            // Roughly the reverse trade; exactness is not needed because only observed
+            // buys are replay-checked.
+            amount_in: b.amount_out,
+            amount_out: b.amount_in / U256::from(1_000u64),
+            fee: U256::ZERO,
             tax: U256::ZERO,
-            snipe_tax: snipe.map(U256::from),
+            snipe_tax: None,
+            ..b.clone()
         }
+    }
+
+    /// A consistent sequence of buys against one curve.
+    fn buys(spec: &[(u64, u8, u64, u64)]) -> Vec<TradeRow> {
+        let c = cfg();
+        let mut curve = Curve::new(&c);
+        spec.iter()
+            .map(|(b, t, q, s)| curve.buy(*b, *t, *q, *s))
+            .collect()
     }
 
     fn input<'a>(
@@ -443,25 +521,31 @@ mod tests {
     fn the_entry_is_the_first_buy_that_paid_no_snipe_tax() {
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![
-            buy(101, 1, 1_000, 500, Some(900)), // inside the window
-            buy(105, 2, 1_000, 400, Some(500)), // still inside
-            buy(140, 3, 1_000, 300, None),      // the window has closed
-            buy(200, 4, 1_000, 200, None),
-        ];
+        let trades = buys(&[
+            (101, 1, 1_000_000_000_000_000, 9_900), // inside the window
+            (105, 2, 1_000_000_000_000_000, 5_000), // still inside
+            (140, 3, 1_000_000_000_000_000, 0),     // the window has closed
+            (200, 4, 1_000_000_000_000_000, 0),
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.entry_rule, EntryRule::ObservedUntaxedBuy);
         assert_eq!(o.entry_block, Some(140));
-        assert_eq!(o.entry_tokens, Some(U256::from(300u64)));
+        assert_eq!(
+            o.entry_tokens,
+            Some(trades[2].amount_out),
+            "the entry is that buy's actual fill"
+        );
     }
 
     #[test]
     fn the_dev_buy_in_the_launch_transaction_is_never_the_entry() {
         let c = cfg();
         let ex = HashSet::new();
-        let mut dev = buy(100, 0xFF, 1_000, 5_000, None);
-        dev.tx_hash = B256::repeat_byte(0xFF); // the launch tx
-        let trades = vec![dev, buy(150, 3, 1_000, 300, None)];
+        let mut trades = buys(&[
+            (100, 0xFF, 5_000_000_000_000_000, 0),
+            (150, 3, 1_000_000_000_000_000, 0),
+        ]);
+        trades[0].tx_hash = B256::repeat_byte(0xFF); // the launch tx
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.entry_block, Some(150), "the dev buy is not an entry");
     }
@@ -475,10 +559,10 @@ mod tests {
         let mut ex = HashSet::new();
         ex.insert(addr(2));
 
-        let trades = vec![
-            buy(101, 2, 1_000, 900, None), // exempt, inside the window, untaxed
-            buy(150, 3, 1_000, 300, None), // the real entry
-        ];
+        let trades = buys(&[
+            (101, 2, 1_000_000_000_000_000, 0), // exempt, inside the window, untaxed
+            (150, 3, 1_000_000_000_000_000, 0), // the real entry
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.entry_block, Some(150));
         assert_eq!(o.entry_rule, EntryRule::ObservedUntaxedBuy);
@@ -493,10 +577,10 @@ mod tests {
         // denominator.
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![
-            buy(101, 1, 1_000, 500, Some(900)),
-            buy(102, 2, 1_000, 400, Some(800)),
-        ];
+        let trades = buys(&[
+            (101, 1, 1_000_000_000_000_000, 9_900),
+            (102, 2, 1_000_000_000_000_000, 8_000),
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.entry_rule, EntryRule::ReconstructedAtWindowEnd);
         assert_eq!(o.entry_block, Some(130), "launch block + the tax window");
@@ -526,12 +610,12 @@ mod tests {
         let ex = HashSet::new();
         let cases: Vec<Vec<TradeRow>> = vec![
             vec![],
-            vec![buy(101, 1, 1_000, 500, Some(900))],
-            vec![buy(150, 1, 1_000, 500, None)],
-            vec![
-                buy(101, 1, 1_000, 500, Some(900)),
-                buy(150, 2, 1_000, 400, None),
-            ],
+            buys(&[(101, 1, 1_000_000_000_000_000, 9_900)]),
+            buys(&[(150, 1, 1_000_000_000_000_000, 0)]),
+            buys(&[
+                (101, 1, 1_000_000_000_000_000, 9_900),
+                (150, 2, 1_000_000_000_000_000, 0),
+            ]),
         ];
         for trades in cases {
             let o = compute(&input(&trades, &ex, &ts, &c));
@@ -550,14 +634,10 @@ mod tests {
         let ex = HashSet::new();
 
         let empty = compute(&input(&[], &ex, &ts, &c));
-        let big = U256::from(500_000_000_000_000_000u64); // 0.5 ETH inside the window
-        let moved = vec![TradeRow {
-            amount_in: big,
-            amount_out: U256::from(20_000_000_000_000_000_000_000_000u128),
-            fee: big / U256::from(100u64),
-            snipe_tax: Some(U256::from(1u64)),
-            ..buy(101, 1, 0, 0, Some(1))
-        }];
+        // 0.5 ETH bought inside the window really does move the curve.
+        // A modest snipe tax: 9,900 bps plus the 1% fee would consume the entire input,
+        // leaving nothing to move the curve with.
+        let moved = buys(&[(101, 1, 500_000_000_000_000_000, 300)]);
         let after = compute(&input(&moved, &ex, &ts, &c));
 
         assert!(
@@ -572,14 +652,19 @@ mod tests {
     fn the_peak_is_the_highest_price_after_entry() {
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![
-            buy(150, 1, 1_000, 1_000, None), // entry: price 1
-            buy(160, 2, 1_000, 250, None),   // price 4
-            buy(170, 3, 1_000, 500, None),   // price 2
-        ];
+        // Each buy moves the curve up, so the last is the peak.
+        let trades = buys(&[
+            (150, 1, 1_000_000_000_000_000, 0),
+            (160, 2, 900_000_000_000_000_000, 0),
+            (170, 3, 1_000_000_000_000_000, 0),
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
-        assert_eq!(o.ath_block, Some(160));
-        assert_eq!(o.max_multiple_bps, Some(40_000), "4x peak");
+        assert_eq!(o.ath_block, Some(170), "each buy moves the price up");
+        assert!(
+            o.max_multiple_bps.unwrap() > 10_000,
+            "a rising curve peaks above entry: {:?}",
+            o.max_multiple_bps
+        );
     }
 
     #[test]
@@ -587,10 +672,9 @@ mod tests {
         // Never below 1x: the entry price itself is always achievable at entry.
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![
-            buy(150, 1, 1_000, 1_000, None),
-            buy(160, 2, 1_000, 10_000, None), // price 0.1
-        ];
+        // A buy then a big sell, so the price ends below entry.
+        let mut trades = buys(&[(150, 1, 1_000_000_000_000_000, 0)]);
+        trades.push(collapse(&trades[0], 160, 2));
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.max_multiple_bps, Some(10_000), "1x, not below");
     }
@@ -600,17 +684,24 @@ mod tests {
         let c = cfg();
         let ex = HashSet::new();
         // 100 ms blocks: 5 minutes is 3,000 blocks.
-        let trades = vec![
-            buy(150, 1, 1_000, 1_000, None),  // entry, price 1
-            buy(1_000, 2, 1_000, 500, None),  // +85s,  price 2
-            buy(2_000, 3, 1_000, 250, None),  // +185s, price 4
-            buy(50_000, 4, 1_000, 100, None), // way past 5m, price 10
-        ];
+        // 100 ms blocks: 5 minutes is 3,000 blocks.
+        let trades = buys(&[
+            (150, 1, 1_000_000_000_000_000, 0),      // entry
+            (1_000, 2, 500_000_000_000_000_000, 0),  // +85s
+            (2_000, 3, 500_000_000_000_000_000, 0),  // +185s, still inside 5m
+            (10_000, 4, 500_000_000_000_000_000, 0), // past 5m (3,000 blocks), inside 30m
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
+        let inside = trade_price(&trades[2]).unwrap();
+        let entry = o.entry_price.unwrap();
         assert_eq!(
             o.mult_after_5m_bps,
-            Some(40_000),
-            "4x at 5 minutes, not the later 10x"
+            quarrel_store::types::multiple_bps(inside, entry),
+            "the last trade before the horizon, not the much later one"
+        );
+        assert!(
+            o.mult_after_30m_bps.unwrap() > o.mult_after_5m_bps.unwrap(),
+            "the 10,000-block trade counts at 30 minutes but not at 5"
         );
     }
 
@@ -620,7 +711,7 @@ mod tests {
         // round-trip cost is a sell quote, not a write-down to nothing.
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![buy(150, 1, 1_000, 1_000, None)];
+        let trades = buys(&[(150, 1, 1_000_000_000_000_000, 0)]);
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.mult_after_5m_bps, Some(10_000));
         assert_eq!(o.mult_after_30m_bps, Some(10_000));
@@ -631,18 +722,14 @@ mod tests {
         let c = cfg();
         let ex = HashSet::new();
         // Entered, collapsed to 1% of entry, then silent for far longer than the window.
-        let trades = vec![
-            buy(150, 1, 1_000, 1_000, None),
-            buy(160, 2, 1_000, 100_000, None),
-        ];
+        let mut trades = buys(&[(150, 1, 1_000_000_000_000_000, 0)]);
+        trades.push(collapse(&trades[0], 160, 2));
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert!(o.died, "quiet and collapsed");
 
         // Still trading right up to the head: not dead.
-        let live = vec![
-            buy(150, 1, 1_000, 1_000, None),
-            buy(199_999, 2, 1_000, 100_000, None),
-        ];
+        let mut live = buys(&[(150, 1, 1_000_000_000_000_000, 0)]);
+        live.push(collapse(&live[0], 199_999, 2));
         let o = compute(&input(&live, &ex, &ts, &c));
         assert!(!o.died, "recent activity means it is not silent");
     }
@@ -651,11 +738,11 @@ mod tests {
     fn post_entry_facts_are_recorded_but_kept_out_of_the_filterable_set() {
         let c = cfg();
         let ex = HashSet::new();
-        let trades = vec![
-            buy(150, 1, 1_000, 1_000, None),
-            buy(155, 2, 1_000, 900, None),
-            buy(160, 3, 1_000, 800, None),
-        ];
+        let trades = buys(&[
+            (150, 1, 1_000_000_000_000_000, 0),
+            (155, 2, 1_000_000_000_000_000, 0),
+            (160, 3, 1_000_000_000_000_000, 0),
+        ]);
         let o = compute(&input(&trades, &ex, &ts, &c));
         assert_eq!(o.distinct_buyers_1m, Some(3));
         assert_eq!(
@@ -696,8 +783,8 @@ mod tests {
     #[test]
     fn the_replay_reports_a_mismatch_rather_than_hiding_it() {
         let c = cfg();
-        let mut wrong = buy(100, 1, 88_421_000_000_000_000, 1, None);
-        wrong.fee = U256::from(884_210_000_000_000u64);
+        let mut wrong = buy(100, 1, 88_421_000_000_000_000, 0);
+        wrong.amount_out += U256::from(1u64); // one token too many
         let check = verify_replay(&c, &[wrong]);
         assert_eq!(check.mismatched, 1);
         assert!(
@@ -708,11 +795,13 @@ mod tests {
 
     #[test]
     fn trade_price_normalises_both_sides_to_quote_per_token() {
-        let b = buy(1, 1, 1_000, 500, None);
+        let mut b = buy(1, 1, 1_000_000_000_000_000, 0);
+        b.amount_in = U256::from(1_000u64); // quote in
+        b.amount_out = U256::from(500u64); // tokens out
         let mut s = b.clone();
         s.side = Side::Sell;
-        s.amount_in = U256::from(500u64); // tokens in
-        s.amount_out = U256::from(1_000u64); // quote out
+        s.amount_in = U256::from(500u64); // the same tokens, going the other way
+        s.amount_out = U256::from(1_000u64); // the same quote
         assert_eq!(
             trade_price(&b),
             trade_price(&s),

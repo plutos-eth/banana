@@ -153,19 +153,32 @@ impl CurveState {
 
     /// Advance the state by an observed `CurveBuy`.
     ///
-    /// Every argument comes straight from the event payload, except `opening` which comes
-    /// from the `SnipeTaxCharged` emitted by the same curve in the same transaction (zero
-    /// when there is none). Nothing here is inferred, so a replay is a re-derivation
-    /// rather than a simulation.
+    /// Every argument comes straight from the event payload, so a replay is a
+    /// re-derivation rather than a simulation.
+    ///
+    /// # The snipe tax is already inside `fee`
+    ///
+    /// The opening tax is **not** subtracted here, and that is not an oversight. Measured
+    /// on 400 snipe-taxed buys, `fee - snipeTaxCharged` is exactly 1% of `quoteIn` in
+    /// every single case: the event's `fee` field aggregates the curve fee and the opening
+    /// tax. Subtracting the `SnipeTaxCharged` amount as well double-counts it.
+    ///
+    /// It is worth knowing how badly that fails, because it fails quietly. A curve's first
+    /// snipe-taxed buy is off by ~0.2%, and every later trade on that curve then replays
+    /// from a wrong reserve -- so a single mistake at trade 22 of 577 poisons the other
+    /// 555. Replay exactness across real curves went from 30% to 99% on this one change.
+    ///
+    /// [`quote_buy`] is unaffected: it *predicts* a buy from basis points, where the three
+    /// deductions genuinely are separate. This is the *replay* path, which consumes an
+    /// event that has already combined them.
     pub fn apply_buy(
         &mut self,
         quote_in: U256,
         tokens_out: U256,
         fee: U256,
         tax: U256,
-        opening: U256,
     ) -> Result<()> {
-        let deducted = add(add(fee, tax)?, opening)?;
+        let deducted = add(fee, tax)?;
         let net = quote_in.checked_sub(deducted).ok_or(CurveError::Overflow)?;
         self.quote_reserve = add(self.quote_reserve, net)?;
         self.real_quote_reserve = add(self.real_quote_reserve, net)?;
@@ -238,6 +251,55 @@ impl LaunchConfig {
     /// It is a **fixture and a fallback, never the source of truth**: the indexer reads
     /// the real config per `launchConfigId` and `doctor` re-verifies it, because spec §2
     /// warns that factory parameters can change.
+    /// The config for one launch, from the graduation threshold its `TokenLaunched`
+    /// event carried.
+    ///
+    /// **The phantom reserve is per pair token, not a global constant.** Spec §2 gives
+    /// "4.2 ETH real quote against a 1.68 ETH phantom reserve", which is true only of
+    /// ETH-paired launches -- measured at just 40% of the universe. The other 60% pair
+    /// against 40-odd different tokens, each with its own economics, and applying ETH's
+    /// numbers to them makes every replayed price wrong.
+    ///
+    /// The relationship is fixed even though the values are not: solving the initial
+    /// reserve from the first real buy on 400 curves gives
+    /// `phantom = graduation_threshold * 2/5` on 368 of them, and 1.68/4.2 is exactly 2/5.
+    /// That also keeps reserved supply at `phantom/(phantom+threshold)` = 2/7 = 28.57% for
+    /// every pair, matching §2.
+    ///
+    /// **This is a fallback, not the source of truth.** The protocol stores the phantom
+    /// quote per pair token and derives the threshold from it, not the other way round, so
+    /// recovering it by dividing is exact only when the threshold happens to be divisible.
+    /// Rounding the other way was measured and is worse: replay exactness across real
+    /// curves is 98.9% flooring and 83% with a ceiling, so neither rounding is right for
+    /// every curve and the division is simply not invertible.
+    ///
+    /// The real value comes from `pairTokenEconomics(pairToken)`, read once per distinct
+    /// pair token. Use [`LaunchConfig::with_phantom`] when it is available; this is for
+    /// when it is not.
+    pub fn for_threshold(supply: U256, curve_fee_bps: Bps, graduation_threshold: U256) -> Self {
+        Self {
+            supply,
+            curve_fee_bps,
+            phantom_quote: graduation_threshold * U256::from(2u64) / U256::from(5u64),
+            graduation_threshold,
+        }
+    }
+
+    /// The exact config, with the phantom quote read from `pairTokenEconomics`.
+    pub fn with_phantom(
+        supply: U256,
+        curve_fee_bps: Bps,
+        graduation_threshold: U256,
+        phantom_quote: U256,
+    ) -> Self {
+        Self {
+            supply,
+            curve_fee_bps,
+            phantom_quote,
+            graduation_threshold,
+        }
+    }
+
     pub fn live_id_0() -> Self {
         let one_eth = U256::from(1_000_000_000_000_000_000u64);
         Self {
@@ -425,6 +487,71 @@ mod tests {
     }
 
     #[test]
+    fn a_read_phantom_overrides_the_derived_one() {
+        // Deriving is a fallback: the division is not invertible, and one wei of error in
+        // the initial reserve makes every replayed buy on that curve wrong.
+        let threshold = U256::from(42_347_152_428_810_721_502u128);
+        let derived = LaunchConfig::for_threshold(LaunchConfig::live_id_0().supply, 100, threshold);
+        let exact = LaunchConfig::with_phantom(
+            LaunchConfig::live_id_0().supply,
+            100,
+            threshold,
+            U256::from(16_938_860_971_524_288_601u128),
+        );
+        assert_ne!(derived.phantom_quote, exact.phantom_quote);
+        assert_eq!(exact.graduation_threshold, derived.graduation_threshold);
+    }
+
+    #[test]
+    fn the_phantom_reserve_follows_the_pair_tokens_threshold() {
+        // ETH: the spec's 1.68 against 4.2.
+        let eth = LaunchConfig::for_threshold(
+            LaunchConfig::live_id_0().supply,
+            100,
+            eth(4, 200_000_000_000_000_000),
+        );
+        assert_eq!(
+            eth.phantom_quote,
+            super::LaunchConfig::live_id_0().phantom_quote
+        );
+
+        // A non-ETH pair seen in the indexed window: threshold 41.6, so phantom 16.64.
+        let other = LaunchConfig::for_threshold(
+            LaunchConfig::live_id_0().supply,
+            100,
+            U256::from(41_600_000_000_000_000_000u128),
+        );
+        assert_eq!(
+            other.phantom_quote,
+            U256::from(16_640_000_000_000_000_000u128)
+        );
+
+        // And a six-decimal pair, where using ETH's constants would be wildly wrong.
+        let small = LaunchConfig::for_threshold(
+            LaunchConfig::live_id_0().supply,
+            100,
+            U256::from(8_090_000_000u64),
+        );
+        assert_eq!(small.phantom_quote, U256::from(3_236_000_000u64));
+    }
+
+    #[test]
+    fn reserved_supply_stays_two_sevenths_for_every_pair() {
+        // 28.57% of spec §2 is a consequence of the 2/5 ratio, so it holds for every pair
+        // token rather than only for ETH.
+        for threshold in [
+            eth(4, 200_000_000_000_000_000),
+            U256::from(41_600_000_000_000_000_000u128),
+            U256::from(8_090_000_000u64),
+        ] {
+            let cfg = LaunchConfig::for_threshold(LaunchConfig::live_id_0().supply, 100, threshold);
+            let s = CurveState::opening(&cfg).unwrap();
+            let bps = (s.reserved_tokens * U256::from(BPS) / cfg.supply).to::<u32>();
+            assert_eq!(bps, 2857, "threshold {threshold}");
+        }
+    }
+
+    #[test]
     fn reserved_supply_is_two_sevenths() {
         let s = fresh();
         let supply = LaunchConfig::live_id_0().supply;
@@ -449,8 +576,7 @@ mod tests {
         // Apply the buy so the sell is quoted against the moved curve, as it would be in
         // reality. Price impact is part of the round trip.
         let fee = bps_of(spend, s.fee_bps).unwrap();
-        s.apply_buy(spend, q.tokens_out, fee, U256::ZERO, U256::ZERO)
-            .unwrap();
+        s.apply_buy(spend, q.tokens_out, fee, U256::ZERO).unwrap();
 
         let back = quote_sell(&s, q.tokens_out).unwrap();
         assert!(back < spend, "a round trip must lose money");
@@ -554,8 +680,7 @@ mod tests {
         let spend = eth(0, 50_000_000_000_000_000);
         let q1 = quote_buy(&s, spend).unwrap();
         let fee1 = bps_of(spend, s.fee_bps).unwrap();
-        s.apply_buy(spend, q1.tokens_out, fee1, U256::ZERO, U256::ZERO)
-            .unwrap();
+        s.apply_buy(spend, q1.tokens_out, fee1, U256::ZERO).unwrap();
 
         let q2 = quote_buy(&s, spend).unwrap();
         assert!(
@@ -576,8 +701,7 @@ mod tests {
         let spend = eth(0, 50_000_000_000_000_000);
         let q = quote_buy(&s, spend).unwrap();
         let fee = bps_of(spend, s.fee_bps).unwrap();
-        s.apply_buy(spend, q.tokens_out, fee, U256::ZERO, U256::ZERO)
-            .unwrap();
+        s.apply_buy(spend, q.tokens_out, fee, U256::ZERO).unwrap();
 
         let out = quote_sell(&s, q.tokens_out).unwrap();
         let gross = amount_out(q.tokens_out, s.token_reserve, s.quote_reserve).unwrap();

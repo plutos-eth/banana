@@ -148,6 +148,10 @@ pub async fn run(
         scan::scan_trades(client, history, &mut progress, b_from, plan.to_block).await?;
     on_progress(&progress);
 
+    // Pair economics: one read per distinct pair token, needed before outcomes because a
+    // curve cannot be replayed without its pair's phantom reserve.
+    scan::scan_pair_economics(client, history).await?;
+
     // --- C ---------------------------------------------------------------------------
     if !plan.skip_calldata {
         report.enrichment_rows =
@@ -172,7 +176,11 @@ pub async fn run(
 /// Returns `(pit_rows, outcomes, observed, reconstructed, undecodable)`.
 fn derive(history: &mut History, plan: &IndexPlan) -> Result<(u64, u64, u64, u64, u64), ScanError> {
     let graduated = history.graduation_blocks()?;
-    let config = history
+    // Supply and curve fee come from the launch config; the phantom reserve does NOT.
+    // It is per pair token, so it is derived per launch from the graduation threshold the
+    // event carried. Only 40% of launches are ETH-paired, so using the ETH config for all
+    // of them made 87% of replayed buys wrong.
+    let base = history
         .get_launch_config(0)?
         .unwrap_or_else(LaunchConfig::live_id_0);
 
@@ -224,6 +232,15 @@ fn derive(history: &mut History, plan: &IndexPlan) -> Result<(u64, u64, u64, u64
 
         // Outcome.
         let trades = history.trades_for_curve(l.curve)?;
+        // Derived from the graduation threshold the launch event carried.
+        //
+        // `pairTokenEconomics` was tried and is WORSE: it returns the pair's economics
+        // *now*, not what the curve launched with, so replay exactness fell from 98.9% to
+        // 60%. That is the same current-state trap as socials, in a place it was not
+        // expected. Deriving from the per-launch threshold is point-in-time by
+        // construction.
+        let config =
+            LaunchConfig::for_threshold(base.supply, base.curve_fee_bps, l.graduation_threshold);
         let exempt: HashSet<Address> = HashSet::new(); // declared wallets, filled below
         let ts_at = |b: u64| history.timestamp_at(b).ok().flatten();
         let input = OutcomeInput {

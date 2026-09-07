@@ -19,6 +19,7 @@ use quarrel_chain::rpc::Client;
 use quarrel_chain::transport::{LiveTransport, RecordingTransport, ReplayTransport, Transport};
 use quarrel_chain::{addr, doctor};
 use quarrel_indexer::run::{IndexPlan, run as run_index};
+use quarrel_indexer::verify;
 use quarrel_store::{History, Lock};
 
 #[derive(Parser, Debug)]
@@ -99,6 +100,17 @@ enum Command {
         /// Where the databases live.
         #[arg(long, default_value = "data")]
         data_dir: PathBuf,
+    },
+
+    /// Check the indexed data against itself and report threshold evidence.
+    ///
+    /// Needs no network: everything here is derived from the local store.
+    Verify {
+        #[arg(long, default_value = "data")]
+        data_dir: PathBuf,
+        /// Stop after this many curves, for a quick read on a large store.
+        #[arg(long)]
+        limit: Option<usize>,
     },
 }
 
@@ -319,5 +331,134 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
+
+        Command::Verify { data_dir, limit } => {
+            let db_path = data_dir.join("history.db");
+            let history = History::open_read_only(&db_path)
+                .with_context(|| format!("opening {}", db_path.display()))?;
+
+            println!("== curve replay ==");
+            println!();
+            let r = verify::verify_all(&history, *limit)?;
+            println!("  curves replayed      {}", r.curves_checked);
+            println!("  buys checked         {}", r.replay.checked);
+            println!("  reproduced exactly   {}", r.replay.exact);
+            println!("  mismatched           {}", r.replay.mismatched);
+            println!("  errored              {}", r.replay.errored);
+            if !r.curves_with_mismatch.is_empty() {
+                println!(
+                    "  first mismatches:    {}",
+                    r.curves_with_mismatch.join(", ")
+                );
+            }
+            let pct_exact = if r.replay.checked > 0 {
+                r.replay.exact as f64 * 100.0 / r.replay.checked as f64
+            } else {
+                100.0
+            };
+            println!();
+            println!("  exact                {pct_exact:.1}% of buys");
+            println!(
+                "  verdict: {}",
+                if r.is_exact() {
+                    "EXACT - every buy reproduces its event".to_string()
+                } else {
+                    // Not a failure. A curve whose replay does not reproduce reality is
+                    // refused a reconstructed entry rather than given a plausible wrong
+                    // one, so the inexactness is bounded and visible instead of silent.
+                    format!(
+                        "{} curve(s) do not reproduce exactly; those are refused a                          reconstructed entry rather than given a wrong one",
+                        r.curves_with_mismatch.len()
+                    )
+                }
+            );
+
+            let (buys, sells, taxed) = verify::side_counts(&history)?;
+            println!();
+            println!("== trades ==");
+            println!();
+            println!("  buys                 {buys}");
+            println!("  sells                {sells}");
+            println!(
+                "  snipe-taxed buys     {taxed} ({:.1}% of buys)",
+                if buys > 0 {
+                    taxed as f64 * 100.0 / buys as f64
+                } else {
+                    0.0
+                }
+            );
+
+            let d = verify::distributions(&history)?;
+            println!();
+            println!("== universe ==");
+            println!();
+            println!("  launches             {}", d.launches);
+            println!(
+                "  entry observed       {} ({:.1}%)",
+                d.observed_entries,
+                pct(d.observed_entries, d.launches)
+            );
+            println!(
+                "  entry reconstructed  {} ({:.1}%)",
+                d.reconstructed_entries,
+                pct(d.reconstructed_entries, d.launches)
+            );
+            println!(
+                "  undecodable launches {} ({:.1}%)",
+                d.undecodable,
+                pct(d.undecodable, d.launches)
+            );
+            println!(
+                "  migrated             {} ({:.2}%, 1 in {})",
+                d.migrated,
+                pct(d.migrated, d.launches),
+                if d.migrated > 0 {
+                    d.launches / d.migrated
+                } else {
+                    0
+                }
+            );
+            println!(
+                "  no post-entry trade  {} ({:.1}%)",
+                d.no_post_entry_trades,
+                pct(d.no_post_entry_trades, d.launches)
+            );
+            println!(
+                "  no entry at all      {} ({:.1}%)",
+                d.no_entry,
+                pct(d.no_entry, d.launches)
+            );
+            println!(
+                "  farm twins > 0       {} ({:.1}%)",
+                d.twins_nonzero,
+                pct(d.twins_nonzero, d.launches)
+            );
+
+            println!();
+            println!("== distributions, for deriving thresholds ==");
+            println!();
+            println!("                          p10       p25       p50       p75       p90");
+            row("post-entry trades", d.post_entry_trades_p);
+            row("lifespan (blocks)", d.lifespan_blocks_p);
+            row("max multiple (bps)", d.max_multiple_p);
+            row("5m multiple (bps)", d.mult_5m_p);
+            row("deployer depth (blk)", d.depth_p);
+            Ok(())
+        }
     }
+}
+
+fn pct(n: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        n as f64 * 100.0 / total as f64
+    }
+}
+
+fn row(label: &str, p: [u64; 5]) {
+    println!(
+        "  {label:<22}{:>9} {:>9} {:>9} {:>9} {:>9}",
+        p[0], p[1], p[2], p[3], p[4]
+    );
 }

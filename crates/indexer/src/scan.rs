@@ -450,6 +450,45 @@ fn build_enrichment(
     })
 }
 
+/// Read `pairTokenEconomics` for every pair token seen, once each.
+///
+/// The phantom reserve is per pair token and cannot be inferred from the graduation
+/// threshold: the protocol derives the threshold from the phantom, not the reverse, so the
+/// division is not invertible. Measured, deriving it gets 98.9% of replayed buys exact and
+/// no rounding choice gets the rest -- reading it is the only way to be exact.
+///
+/// Cheap: one call per distinct pair token (42 in a 20,000-block window), not per launch.
+pub async fn scan_pair_economics(client: &Client, history: &mut History) -> Result<u64> {
+    use quarrel_chain::abi::IPonsFactory;
+    let pending = history.pair_tokens_needing_economics()?;
+    let mut n = 0;
+    for pair in pending {
+        match client
+            .call(
+                addr::PONS_FACTORY,
+                &IPonsFactory::pairTokenEconomicsCall { pairToken: pair },
+                Priority::Bulk,
+            )
+            .await
+        {
+            Ok(e) => {
+                history.upsert_pair_economics(
+                    pair,
+                    e.phantomQuote,
+                    e.graduationThreshold,
+                    e.decimals,
+                )?;
+                n += 1;
+            }
+            // A pair whose economics cannot be read leaves its curves on the derived
+            // fallback, which is right 98.9% of the time and is reported as such rather
+            // than silently trusted.
+            Err(err) => tracing::warn!(%pair, error = %err, "pairTokenEconomics read failed"),
+        }
+    }
+    Ok(n)
+}
+
 // --- phase D: block timestamp anchors ----------------------------------------------------
 
 /// Sampled block headers, for interpolating timestamps.
@@ -484,6 +523,21 @@ pub async fn scan_anchors(
         }
         written += history.insert_block_anchors(&anchors)? as u64;
         progress.advance(Phase::Anchors, batch.len() as u64, anchors.len() as u64);
+        // Checkpoint like every other phase. The resume test caught this missing: anchors
+        // are cheap enough to redo (41 calls for 20k blocks) that the omission was
+        // invisible at that size, but a 24-hour window is ~1,700 calls and an interrupted
+        // run would have redone all of them.
+        if let Some(last) = batch.last() {
+            history.checkpoint(
+                Phase::Anchors.key(),
+                PhaseState {
+                    from_block: from,
+                    last_block: *last,
+                    target_block: to,
+                    rows_written: written,
+                },
+            )?;
+        }
     }
 
     progress.finish(Phase::Anchors);

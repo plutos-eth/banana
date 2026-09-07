@@ -144,6 +144,23 @@ CREATE TABLE launch_configs (
 ) STRICT;
 
 -- ---------------------------------------------------------------------------------------
+-- pair_economics: phantom quote and graduation threshold, PER PAIR TOKEN.
+--
+-- Spec sec.2 gives "4.2 ETH real quote against a 1.68 ETH phantom reserve", which holds
+-- only for ETH-paired launches -- measured at 40% of the universe. The rest pair against
+-- 40-odd other tokens, each with its own economics, and a curve cannot be replayed without
+-- the right phantom reserve for its pair.
+--
+-- Read once per distinct pair token, not once per launch.
+-- ---------------------------------------------------------------------------------------
+CREATE TABLE pair_economics (
+    pair_token           TEXT PRIMARY KEY,
+    phantom_quote        BLOB NOT NULL,
+    graduation_threshold BLOB NOT NULL,
+    decimals             INTEGER NOT NULL
+) STRICT;
+
+-- ---------------------------------------------------------------------------------------
 -- block_anchors: sampled (block, timestamp) pairs.
 --
 -- Times between anchors are interpolated. Block production measured extremely regular

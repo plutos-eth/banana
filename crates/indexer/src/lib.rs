@@ -18,6 +18,7 @@ pub mod outcomes;
 pub mod progress;
 pub mod run;
 pub mod scan;
+pub mod verify;
 
 pub use chunking::{Chunker, ChunkerConfig, Range};
 pub use progress::{Phase, Progress, ProgressEvent};
