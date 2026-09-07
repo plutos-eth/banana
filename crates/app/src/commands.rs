@@ -85,6 +85,17 @@ pub async fn start_index(
     Ok(())
 }
 
+/// Arm a live session (spec §7.3, PLAN.md C7).
+///
+/// Refuses outright in a dry-run process: `--live` is a launch flag, so a process without
+/// it has no key to arm and relaunching is the only way to get one. The phrase itself is
+/// checked in `quarrel-live`, which is also where the briefing the user read was built,
+/// so the words and the limits cannot drift apart.
+#[tauri::command]
+pub fn arm(state: State<'_, AppState>, phrase: String) -> Result<crate::state::Mode> {
+    state.arm(&phrase)
+}
+
 /// Open a URL in the user's own browser.
 ///
 /// **Restricted to the explorer origin.** Token names, symbols and logo fields are written

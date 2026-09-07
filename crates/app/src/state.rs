@@ -16,20 +16,49 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use quarrel_core::strategy::StrategyConfig;
 use quarrel_store::{History, Lock};
 
-/// Whether real money can move. Always visible in the UI (spec §8, view 6).
+/// Whether real money can move. Always visible in the UI (spec §3.2, §8 view 6).
+///
+/// Three states, not two, because PLAN.md C7 established that `--live` and `arm` are
+/// different gates and conflating them is how "armed" gets mistaken for "live":
+///
+/// * `--live` is a **process launch flag**. Without it a process can never spend; it has
+///   to be relaunched. That is what "never a button" means.
+/// * `arm` is typed **inside** an already-live process, once, after the briefing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
-    /// Everything runs; nothing is signed. The default, and the only mode phase 5 has.
+    /// Launched without `--live`. Holds no key and cannot be armed at any price.
     DryRun,
-    Live,
+    /// Launched with `--live` but not yet armed. Still cannot spend.
+    LiveNotArmed,
+    /// Armed. Real money moves.
+    LiveArmed,
 }
 
 impl Mode {
     pub fn label(self) -> &'static str {
         match self {
             Mode::DryRun => "DRY RUN",
-            Mode::Live => "LIVE",
+            Mode::LiveNotArmed => "LIVE — NOT ARMED",
+            Mode::LiveArmed => "LIVE — ARMED",
+        }
+    }
+
+    /// The only state in which a transaction can be signed.
+    pub fn can_spend(self) -> bool {
+        matches!(self, Mode::LiveArmed)
+    }
+
+    /// What the user is told about this state, in the terms C7 asks for.
+    pub fn explain(self) -> &'static str {
+        match self {
+            Mode::DryRun => {
+                "Everything runs and nothing can be signed: this process holds no key.                  Relaunch with --live to be able to arm."
+            }
+            Mode::LiveNotArmed => {
+                "Launched with --live, so a key is loaded, but nothing fires until you                  read the briefing and type the arm phrase."
+            }
+            Mode::LiveArmed => "Armed. Entries will be signed and sent, inside the session budget.",
         }
     }
 }
@@ -75,7 +104,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(data_dir: impl AsRef<Path>) -> Self {
+    /// `live` comes from the `--live` launch flag and from nowhere else.
+    pub fn new(data_dir: impl AsRef<Path>, live: bool) -> Self {
         let data_dir = data_dir.as_ref().to_path_buf();
         let strategy = load_strategy(&data_dir).unwrap_or_default();
         Self {
@@ -83,10 +113,13 @@ impl AppState {
             history: Mutex::new(None),
             strategy: Mutex::new(strategy),
             indexing: AtomicBool::new(false),
-            // Phase 5 has no engine and therefore no way to be anything else. Spec §7.3
-            // puts the arming phrase and the `--live` flag in phase 6; until then the
-            // indicator is not a setting the user can change, which is the honest state.
-            mode: Mutex::new(Mode::DryRun),
+            // Decided at launch and never afterwards: a process without `--live` cannot
+            // be talked into being one with it.
+            mode: Mutex::new(if live {
+                Mode::LiveNotArmed
+            } else {
+                Mode::DryRun
+            }),
         }
     }
 
@@ -104,6 +137,30 @@ impl AppState {
 
     pub fn mode(&self) -> Mode {
         *self.mode.lock().expect("mode lock")
+    }
+
+    /// Arm a live process. Refuses in dry run, which is the C7 rule made mechanical.
+    ///
+    /// Returns what the user should be shown: either the new mode, or why not.
+    pub fn arm(&self, typed: &str) -> Result<Mode> {
+        let mut mode = self.mode.lock().expect("mode lock");
+        match *mode {
+            Mode::DryRun => Err(AppError::Refused(
+                "this process was launched without --live and cannot be armed. Close it                  and relaunch with --live if you mean to trade."
+                    .into(),
+            )),
+            Mode::LiveArmed => Ok(Mode::LiveArmed),
+            Mode::LiveNotArmed => {
+                if !quarrel_live::phrase_arms(typed) {
+                    return Err(AppError::Refused(format!(
+                        "not armed: the phrase is `{}` and nothing else",
+                        quarrel_live::ARM_PHRASE
+                    )));
+                }
+                *mode = Mode::LiveArmed;
+                Ok(Mode::LiveArmed)
+            }
+        }
     }
 
     /// True when a `strategy.json` already exists, which is what decides whether the
@@ -220,7 +277,7 @@ mod tests {
     #[test]
     fn a_fresh_install_has_no_saved_strategy_and_uses_the_baseline() {
         let d = temp_dir("fresh");
-        let s = AppState::new(&d);
+        let s = AppState::new(&d, false);
         assert!(!s.has_saved_strategy(), "this is what triggers onboarding");
         assert_eq!(s.strategy(), StrategyConfig::default());
     }
@@ -228,7 +285,7 @@ mod tests {
     #[test]
     fn a_saved_strategy_round_trips_through_the_file_the_sniper_will_read() {
         let d = temp_dir("save");
-        let s = AppState::new(&d);
+        let s = AppState::new(&d, false);
         let mut cfg = StrategyConfig::default();
         cfg.entry_model.max_tax_bps = 175;
         s.save_strategy(&cfg).unwrap();
@@ -236,14 +293,14 @@ mod tests {
         assert!(s.has_saved_strategy());
         assert_eq!(s.strategy().entry_model.max_tax_bps, 175);
         // Reopening reads the same file, with no translation step (spec §7.2).
-        assert_eq!(AppState::new(&d).strategy(), cfg);
+        assert_eq!(AppState::new(&d, false).strategy(), cfg);
     }
 
     #[test]
     fn an_unparseable_strategy_falls_back_loudly_rather_than_silently() {
         let d = temp_dir("broken");
         std::fs::write(d.join("strategy.json"), "{ not json").unwrap();
-        let s = AppState::new(&d);
+        let s = AppState::new(&d, false);
         assert_eq!(s.strategy(), StrategyConfig::default());
         // The file is left alone: overwriting the user's config on a parse error would
         // destroy the thing they need in order to fix it.
@@ -253,7 +310,7 @@ mod tests {
     #[test]
     fn a_missing_store_is_an_error_not_an_empty_database() {
         let d = temp_dir("nostore");
-        let s = AppState::new(&d);
+        let s = AppState::new(&d, false);
         let e = s.with_history(|_| Ok(()));
         assert!(matches!(e, Err(AppError::NoStore(_))));
         // And no file was created by asking.
@@ -263,7 +320,7 @@ mod tests {
     #[test]
     fn a_second_index_is_refused_while_the_first_holds_the_lock() {
         let d = temp_dir("busy");
-        let s = AppState::new(&d);
+        let s = AppState::new(&d, false);
         let guard = s.begin_index().unwrap();
         assert!(s.is_indexing());
         assert!(matches!(s.begin_index(), Err(AppError::IndexBusy)));
@@ -273,10 +330,52 @@ mod tests {
     }
 
     #[test]
-    fn phase_five_is_dry_run_and_says_so() {
+    fn a_process_without_the_flag_is_dry_run_and_says_so() {
         let d = temp_dir("mode");
-        assert_eq!(AppState::new(&d).mode(), Mode::DryRun);
+        let s = AppState::new(&d, false);
+        assert_eq!(s.mode(), Mode::DryRun);
+        assert!(!s.mode().can_spend());
         assert_eq!(Mode::DryRun.label(), "DRY RUN");
-        assert_eq!(Mode::Live.label(), "LIVE");
+        assert!(s.mode().explain().contains("holds no key"));
+    }
+
+    /// PLAN.md C7: the two gates are different, and a dry-run process cannot cross either.
+    #[test]
+    fn a_dry_run_process_cannot_be_armed_at_any_price() {
+        let d = temp_dir("armdry");
+        let s = AppState::new(&d, false);
+        let e = s.arm("arm").unwrap_err();
+        assert!(matches!(e, AppError::Refused(_)));
+        assert!(e.to_string().contains("relaunch with --live"), "{e}");
+        assert_eq!(s.mode(), Mode::DryRun, "and it stays dry run");
+    }
+
+    #[test]
+    fn a_live_process_starts_unarmed_and_cannot_spend_until_the_phrase() {
+        let d = temp_dir("armlive");
+        let s = AppState::new(&d, true);
+        assert_eq!(s.mode(), Mode::LiveNotArmed);
+        assert!(!s.mode().can_spend(), "a key is loaded but nothing fires");
+
+        for wrong in ["", "y", "yes", "ARM", "arm it"] {
+            assert!(s.arm(wrong).is_err(), "{wrong:?} armed the session");
+            assert_eq!(s.mode(), Mode::LiveNotArmed);
+        }
+
+        assert_eq!(s.arm("arm").unwrap(), Mode::LiveArmed);
+        assert!(s.mode().can_spend());
+        // Arming twice is not an error; it is already done.
+        assert_eq!(s.arm("arm").unwrap(), Mode::LiveArmed);
+    }
+
+    #[test]
+    fn each_mode_says_what_it_means_rather_than_only_naming_itself() {
+        for m in [Mode::DryRun, Mode::LiveNotArmed, Mode::LiveArmed] {
+            assert!(!m.label().is_empty());
+            assert!(m.explain().len() > 40, "{m:?} explains nothing");
+        }
+        // "armed" must never read as "live" and vice versa (C7).
+        assert_ne!(Mode::LiveNotArmed.label(), Mode::LiveArmed.label());
+        assert!(Mode::LiveNotArmed.label().contains("NOT ARMED"));
     }
 }

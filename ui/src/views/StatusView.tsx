@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { api, hasBackend, type Status } from "../ipc";
+import { api, hasBackend, ARM_PHRASE, type Status } from "../ipc";
 import { bytes, count, hours } from "../format";
 import { useApp } from "../store";
 import { Empty } from "../components/Empty";
@@ -44,12 +44,14 @@ export function StatusView() {
       <section className="panel">
         <h2 className="panel__title">Mode</h2>
         <div className="headline">
-          <div className={`headline__value ${s.mode === "live" ? "is-live" : "is-dry"}`}>
+          <div className={`headline__value ${s.can_spend ? "is-live" : "is-dry"}`}>
             {s.mode_label}
           </div>
           <div className="headline__label">{s.engine}</div>
         </div>
       </section>
+
+      <Arm status={s} />
 
       <section className="panel">
         <h2 className="panel__title">Feed health</h2>
@@ -66,9 +68,15 @@ export function StatusView() {
       <section className="panel">
         <h2 className="panel__title">Session budget</h2>
         <p className="note">
-          The money guards exist in the config and are enforced by the executor, which
-          arrives in phase 6. Nothing in this build can sign a transaction, so there is no
-          budget to spend and no figure here that would mean anything.
+          The money guards are implemented and tested — size per buy, position cap,
+          session budget and open-position count — and a dry-run process holds no key at
+          all, so they cannot be bypassed by a flag.
+        </p>
+        <p className="note">
+          What is not wired yet is the executor that would spend against them: nothing in
+          this build watches the chain or places an order, so no budget has been consumed
+          and a figure here would be zero for a reason that has nothing to do with your
+          limits.
         </p>
       </section>
 
@@ -112,5 +120,79 @@ export function StatusView() {
         </table>
       </section>
     </div>
+  );
+}
+
+/**
+ * Arming, and the three states it sits between (PLAN.md C7).
+ *
+ * A dry-run process shows why it cannot be armed rather than a disabled button with no
+ * explanation: the answer is "relaunch with --live", and a user who cannot see that will
+ * assume the feature is broken.
+ */
+function Arm({ status }: { status: Status }) {
+  const setError = useApp((st) => st.setError);
+  const refreshStatus = useApp((st) => st.refreshStatus);
+  const [typed, setTyped] = useState("");
+
+  if (status.mode === "dry_run") {
+    return (
+      <section className="panel">
+        <h2 className="panel__title">Arming</h2>
+        <p className="note">{status.engine}</p>
+        <p className="note">
+          <span className="mono">--live</span> is a launch flag, never a button. That is
+          what makes "real money moves only behind an explicit flag" a property of this
+          process rather than of a check somewhere inside it.
+        </p>
+      </section>
+    );
+  }
+
+  if (status.mode === "live_armed") {
+    return (
+      <section className="panel">
+        <h2 className="panel__title">Arming</h2>
+        <div className="banner banner--error">
+          Armed. Entries will be signed and sent, up to the session budget. Close the
+          application to stop.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <h2 className="panel__title">Arming</h2>
+      <div className="banner banner--warn">{status.engine}</div>
+      <div className="rule">
+        <input
+          className="input"
+          placeholder={`type ${ARM_PHRASE} to arm`}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={() => {
+            api
+              .arm(typed)
+              .then(() => {
+                setTyped("");
+                void refreshStatus();
+              })
+              .catch((e) => setError(e));
+          }}
+        >
+          arm
+        </button>
+      </div>
+      <p className="note">
+        The phrase is exact. Anything else leaves the session unarmed, which is the state
+        it should stay in unless you meant otherwise.
+      </p>
+    </section>
   );
 }

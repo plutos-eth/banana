@@ -59,10 +59,22 @@ export interface StoreSummary {
   bytes: number;
 }
 
+/**
+ * Three states, not two (PLAN.md C7). `--live` is a process launch flag and `arm` is typed
+ * inside an already-live process; conflating them is how "armed" gets mistaken for "live".
+ */
+export type Mode = "dry_run" | "live_not_armed" | "live_armed";
+
+/** The word that arms a live session. Mirrors `quarrel_live::ARM_PHRASE`. */
+export const ARM_PHRASE = "arm";
+
 export interface Status {
-  mode: "dry_run" | "live";
+  mode: Mode;
   mode_label: string;
+  /** What this mode means, in words the backend supplies. */
   engine: string;
+  /** True only when armed. Keyed on rather than the label, so a new mode cannot render as safe. */
+  can_spend: boolean;
   indexing: boolean;
   data_dir: string;
   store: StoreSummary;
@@ -311,6 +323,7 @@ export const api = {
   startIndex: (from: number | null, to: number | null) =>
     invoke<void>("start_index", { from, to }),
   openExplorer: (url: string) => invoke<void>("open_explorer", { url }),
+  arm: (phrase: string) => invoke<Mode>("arm", { phrase }),
 };
 
 export const events = {

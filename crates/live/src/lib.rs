@@ -16,3 +16,19 @@
 //! Key handling and the plaintext-`.env` trade-off are documented in `docs/SAFETY.md`.
 
 #![forbid(unsafe_code)]
+
+pub mod arm;
+pub mod entry;
+pub mod exits;
+pub mod guards;
+pub mod route;
+pub mod session;
+pub mod signer;
+
+pub use arm::{ARM_PHRASE, Briefing, phrase_arms};
+pub use entry::{Achieved, Schedule, Step, TaxReport};
+pub use exits::{Exit, Mark};
+pub use guards::{Budget, Refused, Spend};
+pub use route::{PoolKey, Route};
+pub use session::{Armed, Mode, Session, SessionError};
+pub use signer::{EnvSigner, NoSigner, Signer, SignerError, TxRequest};

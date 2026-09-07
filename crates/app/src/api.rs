@@ -50,8 +50,11 @@ pub struct Status {
     /// Always rendered, on every view (spec §8, view 6).
     pub mode: Mode,
     pub mode_label: String,
-    /// Phase 5 has no engine. Saying so is better than an idle green light.
+    /// What this mode means, in the terms PLAN.md C7 asks for.
     pub engine: String,
+    /// True only when armed. The UI keys its warning colour on this rather than on the
+    /// mode string, so a new mode cannot quietly render as safe.
+    pub can_spend: bool,
     pub indexing: bool,
     pub data_dir: String,
     pub store: StoreSummary,
@@ -65,7 +68,8 @@ pub fn status(state: &AppState) -> Status {
     Status {
         mode: state.mode(),
         mode_label: state.mode().label().to_string(),
-        engine: "not started — the sniper lands in phase 6; nothing can sign here".into(),
+        engine: state.mode().explain().to_string(),
+        can_spend: state.mode().can_spend(),
         indexing: state.is_indexing(),
         data_dir: state.data_dir().display().to_string(),
         store,
@@ -475,7 +479,7 @@ mod tests {
 
     /// The store built by `tests/support`, opened through an `AppState`.
     fn state_with(dir: &std::path::Path) -> AppState {
-        AppState::new(dir)
+        AppState::new(dir, false)
     }
 
     #[test]
@@ -488,7 +492,8 @@ mod tests {
         assert!(!s.store.exists);
         assert_eq!(s.store.launches, 0);
         assert_eq!(s.mode_label, "DRY RUN");
-        assert!(s.engine.contains("phase 6"), "{}", s.engine);
+        assert!(!s.can_spend, "a dry-run process can never spend");
+        assert!(s.engine.contains("holds no key"), "{}", s.engine);
     }
 
     #[test]

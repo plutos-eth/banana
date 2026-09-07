@@ -13,10 +13,16 @@ export function ModeBadge({ status }: { status: Status | null }) {
   if (!status) {
     return <span className="mode mode--unknown">CONNECTING</span>;
   }
-  const live = status.mode === "live";
+  // Keyed on `can_spend` rather than on the label, so a mode added later renders as the
+  // careful colour until somebody deliberately says otherwise.
+  const cls = status.can_spend
+    ? "mode--live"
+    : status.mode === "dry_run"
+      ? "mode--dry"
+      : "mode--armed";
   return (
     <span
-      className={`mode ${live ? "mode--live" : "mode--dry"}`}
+      className={`mode ${cls}`}
       title={status.engine}
       aria-label={`operating mode: ${status.mode_label}`}
     >

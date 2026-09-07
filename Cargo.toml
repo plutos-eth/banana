@@ -18,7 +18,7 @@ exclude = ["scratch"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.90"
 license = "MIT"
 repository = "https://github.com/igorv/quarrel"
 authors = ["quarrel contributors"]
@@ -61,6 +61,17 @@ clap = { version = "4", features = ["derive"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 # Cross-platform advisory file locks, for the per-database writer lock of PLAN.md C3.
 fs4 = "0.13"
+
+# Transaction signing. Only `live` may depend on these -- the trust boundary of spec
+# sec.3.8 is that the private key exists in one crate, and the way to keep that true is
+# for nothing else to be able to construct a signer. Ported rather than hand-rolled: RLP
+# and secp256k1 are places where being nearly right is being wrong.
+alloy-signer = "1"
+alloy-signer-local = "1"
+#  is what makes signature recovery available, which the signing test uses to check
+# that a transaction we produced really does come from the address we think it does.
+alloy-consensus = { version = "1", features = ["k256"] }
+alloy-eips = "1"
 
 # Desktop shell. Only `app` may depend on these: `cargo test --workspace` for phases 1-4
 # must not need a GUI toolchain, and the cron/headless path in spec sec.10 must not either

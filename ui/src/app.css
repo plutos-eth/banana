@@ -157,6 +157,11 @@
   border-color: var(--c-mode-live);
   color: var(--c-mode-live);
 }
+.mode--armed {
+  background: var(--c-mode-armed-bg);
+  border-color: var(--c-mode-armed);
+  color: var(--c-mode-armed);
+}
 .mode--unknown {
   background: var(--c-bg-overlay);
   border-color: var(--c-border-strong);

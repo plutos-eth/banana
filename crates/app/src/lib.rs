@@ -29,6 +29,15 @@ fn data_dir() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("data"))
 }
 
+/// Whether this process was launched with `--live` (spec §3.2, PLAN.md C7).
+///
+/// A launch flag and never a button: a process started without it cannot be talked into
+/// being one with it, which is what makes "real money moves only behind an explicit flag"
+/// a property of the process rather than of a check somebody might skip.
+fn live_flag() -> bool {
+    std::env::args().any(|a| a == "--live")
+}
+
 /// Build and run the desktop application.
 pub fn run() {
     tracing_subscriber::fmt()
@@ -39,7 +48,7 @@ pub fn run() {
         .init();
 
     let app = tauri::Builder::default()
-        .manage(AppState::new(data_dir()))
+        .manage(AppState::new(data_dir(), live_flag()))
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::get_strategy,
@@ -52,6 +61,7 @@ pub fn run() {
             commands::get_index_status,
             commands::start_index,
             commands::open_explorer,
+            commands::arm,
         ])
         .build(tauri::generate_context!())
         .expect("the desktop shell failed to start");
