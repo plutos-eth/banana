@@ -1898,8 +1898,10 @@ version = "0.1.0"
 dependencies = [
  "alloy-primitives",
  "quarrel-core",
+ "quarrel-indexer",
  "quarrel-store",
  "serde",
+ "serde_json",
  "thiserror",
  "tracing",
 ]
@@ -1932,6 +1934,7 @@ dependencies = [
  "quarrel-core",
  "quarrel-indexer",
  "quarrel-store",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

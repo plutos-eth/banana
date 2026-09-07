@@ -64,9 +64,9 @@ mod tests {
                 website: Presence::Present,
                 telegram: Presence::Absent,
             },
-            exempt_wallets: 0,
-            dev_buy_bps: 300,
-            creator_tax_bps: 100,
+            exempt_wallets: Some(0),
+            dev_buy_bps: Some(300),
+            creator_tax_bps: Some(100),
             fee_recipient: FeeRecipient::Deployer,
             deployer_launches: 0,
             deployer_graduations: 0,
@@ -92,10 +92,10 @@ mod tests {
     #[test]
     fn each_failed_condition_lowers_the_rank() {
         let mut f = clean();
-        f.creator_tax_bps = 900; // fails 1 of 4
+        f.creator_tax_bps = Some(900); // fails 1 of 4
         assert_eq!(display_rank(&filter(), &f), 7_500);
 
-        f.exempt_wallets = 9; // fails 2 of 4
+        f.exempt_wallets = Some(9); // fails 2 of 4
         assert_eq!(display_rank(&filter(), &f), 5_000);
 
         f.socials.twitter = Presence::Absent; // 3 of 4
@@ -110,7 +110,7 @@ mod tests {
         // The contract this module must not break: a launch that ranks 7500 is still
         // refused, and a rank of 10000 is not itself a pass.
         let mut f = clean();
-        f.creator_tax_bps = 900;
+        f.creator_tax_bps = Some(900);
         let d = filter().evaluate(&f);
         assert!(!d.passed);
         assert_eq!(display_rank(&filter(), &f), 7_500);

@@ -25,6 +25,7 @@ use std::collections::HashMap;
 
 use alloy_primitives::{Address, U256};
 use quarrel_core::Bps;
+use quarrel_core::features::{Presence, Socials};
 
 /// A launch farm signature: what one operator's template fixes across many wallets.
 ///
@@ -38,9 +39,7 @@ impl Fingerprint {
     pub fn new(
         dev_buy_quote: Option<U256>,
         creator_tax_bps: Option<Bps>,
-        has_twitter: bool,
-        has_website: bool,
-        has_telegram: bool,
+        socials: Socials,
         exempt_wallets: Option<u32>,
     ) -> Self {
         // Unreadable fields become "?" rather than a default, so a launch that did not
@@ -55,10 +54,18 @@ impl Fingerprint {
         let ex = exempt_wallets
             .map(|v| v.to_string())
             .unwrap_or_else(|| "?".into());
-        let links = format!(
-            "{}{}{}",
-            has_twitter as u8, has_website as u8, has_telegram as u8
-        );
+        // Three states, not two. A launch whose calldata did not decode has *unknown*
+        // links, which is not the same template attribute as declaring none, and
+        // collapsing them to "000" made every undecodable launch look like a twin of
+        // every socials-free one.
+        let links: String = [socials.twitter, socials.website, socials.telegram]
+            .iter()
+            .map(|p| match p {
+                Presence::Present => '1',
+                Presence::Absent => '0',
+                Presence::Unknown => '?',
+            })
+            .collect();
         Fingerprint(format!("{dev}|{tax}|{links}|{ex}"))
     }
 
@@ -66,12 +73,19 @@ impl Fingerprint {
         &self.0
     }
 
-    /// True when no distinguishing field decoded, so the fingerprint says nothing.
+    /// True when nothing the **calldata** fixes was readable, so the fingerprint says
+    /// nothing about the operator's template.
     ///
     /// These must not be counted as twins of one another: "we could not read either of
-    /// these" is not evidence that they came from the same operator.
+    /// these" is not evidence that they came from the same operator. The dev buy is
+    /// excluded from this test on purpose — it comes from the launch transaction's logs
+    /// and is readable even when the calldata is not, so an undecodable launch that
+    /// happens to share a round dev-buy size with another is still uninformative.
     pub fn is_uninformative(&self) -> bool {
-        self.0.starts_with("?|?|")
+        matches!(
+            self.0.split('|').collect::<Vec<_>>()[..],
+            [_, "?", "???", "?"]
+        )
     }
 }
 
@@ -223,9 +237,11 @@ mod tests {
         Fingerprint::new(
             Some(U256::from(dev)),
             Some(100),
-            true,
-            false,
-            false,
+            Socials {
+                twitter: Presence::Present,
+                website: Presence::Absent,
+                telegram: Presence::Absent,
+            },
             Some(0),
         )
     }
@@ -360,17 +376,21 @@ mod tests {
         let a = Fingerprint::new(
             Some(U256::from(5u64)),
             Some(200),
-            true,
-            true,
-            false,
+            Socials {
+                twitter: Presence::Present,
+                website: Presence::Present,
+                telegram: Presence::Absent,
+            },
             Some(2),
         );
         let b = Fingerprint::new(
             Some(U256::from(5u64)),
             Some(200),
-            true,
-            true,
-            false,
+            Socials {
+                twitter: Presence::Present,
+                website: Presence::Present,
+                telegram: Presence::Absent,
+            },
             Some(2),
         );
         assert_eq!(a, b);
@@ -381,9 +401,11 @@ mod tests {
             Fingerprint::new(
                 Some(U256::from(6u64)),
                 Some(200),
-                true,
-                true,
-                false,
+                Socials {
+                    twitter: Presence::Present,
+                    website: Presence::Present,
+                    telegram: Presence::Absent
+                },
                 Some(2)
             )
         );
@@ -392,9 +414,11 @@ mod tests {
             Fingerprint::new(
                 Some(U256::from(5u64)),
                 Some(300),
-                true,
-                true,
-                false,
+                Socials {
+                    twitter: Presence::Present,
+                    website: Presence::Present,
+                    telegram: Presence::Absent
+                },
                 Some(2)
             )
         );
@@ -403,9 +427,11 @@ mod tests {
             Fingerprint::new(
                 Some(U256::from(5u64)),
                 Some(200),
-                false,
-                true,
-                false,
+                Socials {
+                    twitter: Presence::Absent,
+                    website: Presence::Present,
+                    telegram: Presence::Absent
+                },
                 Some(2)
             )
         );
@@ -414,9 +440,11 @@ mod tests {
             Fingerprint::new(
                 Some(U256::from(5u64)),
                 Some(200),
-                true,
-                true,
-                false,
+                Socials {
+                    twitter: Presence::Present,
+                    website: Presence::Present,
+                    telegram: Presence::Absent
+                },
                 Some(3)
             )
         );
@@ -427,7 +455,7 @@ mod tests {
         // Two launches nobody could read are not evidence of a shared operator, and
         // treating them as a farm would refuse a whole class of launches for a reason that
         // is about our decoder rather than about them.
-        let unknown = Fingerprint::new(None, None, false, false, false, None);
+        let unknown = Fingerprint::new(None, None, Socials::UNKNOWN, None);
         assert!(unknown.is_uninformative());
 
         let mut b = FeatureBuilder::new(0, HashMap::new());
@@ -438,8 +466,17 @@ mod tests {
 
     #[test]
     fn a_readable_zero_dev_buy_is_distinct_from_an_unreadable_one() {
-        let zero = Fingerprint::new(Some(U256::ZERO), Some(0), false, false, false, Some(0));
-        let unknown = Fingerprint::new(None, None, false, false, false, None);
+        let zero = Fingerprint::new(
+            Some(U256::ZERO),
+            Some(0),
+            Socials {
+                twitter: Presence::Absent,
+                website: Presence::Absent,
+                telegram: Presence::Absent,
+            },
+            Some(0),
+        );
+        let unknown = Fingerprint::new(None, None, Socials::UNKNOWN, None);
         assert_ne!(zero, unknown);
         assert!(!zero.is_uninformative(), "a real zero is information");
     }

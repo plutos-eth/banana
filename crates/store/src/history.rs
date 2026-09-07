@@ -384,13 +384,23 @@ impl History {
 
     /// Record where a phase got to. Called after every chunk, so a failure at 70% resumes
     /// at 70% rather than restarting.
+    ///
+    /// `from_block` keeps the **earliest** start for a given target, because a resumed run
+    /// starts at its resume point and would otherwise overwrite the real beginning of the
+    /// window. That is not academic: after one interruption the Lab reported its window as
+    /// `56867943..56867943`, zero hours long, because every phase had resumed at the end.
+    /// A run at a genuinely different target replaces it, which is what a new window means.
     pub fn checkpoint(&mut self, phase: &str, state: PhaseState) -> Result<()> {
         self.conn.execute(
             "INSERT INTO index_state
                (phase, from_block, last_block, target_block, rows_written, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(phase) DO UPDATE SET
-               from_block   = excluded.from_block,
+               from_block   = CASE
+                                WHEN index_state.target_block = excluded.target_block
+                                THEN min(index_state.from_block, excluded.from_block)
+                                ELSE excluded.from_block
+                              END,
                last_block   = excluded.last_block,
                target_block = excluded.target_block,
                rows_written = excluded.rows_written,
@@ -469,6 +479,36 @@ impl History {
     }
 
     /// Trades on one curve, in chain order. This is what the outcome replay walks.
+    /// The dev buy: the first buy on `curve` **within the launch transaction**.
+    ///
+    /// Restricting to the launch transaction is what makes this point-in-time. The first
+    /// buy on the curve is not the same thing — when the deployer launches without buying,
+    /// that buy belongs to a sniper, in a later block, and using it would feed a filter a
+    /// fact from after the launch (spec §5.3, `docs/FINDINGS.md` §10).
+    ///
+    /// A targeted query rather than a scan of `trades_for_curve`, because the calldata
+    /// phase runs this once per launch — ~25,000 times on a 24-hour window — and a busy
+    /// curve has hundreds of trades whose money blobs would be decoded and thrown away.
+    pub fn dev_buy(&self, curve: Address, launch_tx: B256) -> Result<Option<TradeRow>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT tx_hash, log_index, curve, block, tx_index, side, actor, recipient,
+                    amount_in, amount_out, fee, tax, snipe_tax
+             FROM trades
+             WHERE curve = ?1 AND tx_hash = ?2 AND side = ?3
+             ORDER BY block, log_index
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![
+            addr_key(curve),
+            hash_key(launch_tx),
+            Side::Buy as i64
+        ])?;
+        match rows.next()? {
+            None => Ok(None),
+            Some(r) => Ok(Some(trade_from_row(r)?)),
+        }
+    }
+
     pub fn trades_for_curve(&self, curve: Address) -> Result<Vec<TradeRow>> {
         let mut stmt = self.conn.prepare_cached(
             "SELECT tx_hash, log_index, curve, block, tx_index, side, actor, recipient,
@@ -871,6 +911,30 @@ pub struct OutcomeRow {
     pub observed_blocks: u64,
 }
 
+/// One `trades` row from a statement selecting the columns in schema order.
+fn trade_from_row(r: &rusqlite::Row<'_>) -> Result<TradeRow> {
+    let side_raw: i64 = r.get(5)?;
+    Ok(TradeRow {
+        tx_hash: parse_hash(&r.get::<_, String>(0)?)?,
+        log_index: r.get::<_, i64>(1)? as u64,
+        curve: parse_addr(&r.get::<_, String>(2)?)?,
+        block: r.get::<_, i64>(3)? as u64,
+        tx_index: r.get::<_, i64>(4)? as u64,
+        side: Side::from_i64(side_raw)
+            .ok_or_else(|| StoreError::Corrupt(format!("trades.side = {side_raw}")))?,
+        actor: parse_addr(&r.get::<_, String>(6)?)?,
+        recipient: parse_addr(&r.get::<_, String>(7)?)?,
+        amount_in: blob(&r.get::<_, Vec<u8>>(8)?, "trades.amount_in")?,
+        amount_out: blob(&r.get::<_, Vec<u8>>(9)?, "trades.amount_out")?,
+        fee: blob(&r.get::<_, Vec<u8>>(10)?, "trades.fee")?,
+        tax: blob(&r.get::<_, Vec<u8>>(11)?, "trades.tax")?,
+        snipe_tax: match r.get::<_, Option<Vec<u8>>>(12)? {
+            Some(b) => Some(blob(&b, "trades.snipe_tax")?),
+            None => None,
+        },
+    })
+}
+
 fn blob(b: &[u8], what: &str) -> Result<U256> {
     u256_from_blob(b).ok_or_else(|| StoreError::Corrupt(format!("{what} is not a 32-byte blob")))
 }
@@ -983,6 +1047,74 @@ mod tests {
             .unwrap();
         assert_eq!(written, 2, "only the two genuinely new rows");
         assert_eq!(h.launch_count().unwrap(), 4);
+    }
+
+    fn buy(tx: B256, curve: Address, block: u64, log_index: u64, out: u64) -> TradeRow {
+        TradeRow {
+            tx_hash: tx,
+            log_index,
+            curve,
+            block,
+            tx_index: 0,
+            side: Side::Buy,
+            actor: addr(9),
+            recipient: addr(9),
+            amount_in: U256::from(1_000u64),
+            amount_out: U256::from(out),
+            fee: U256::from(10u64),
+            tax: U256::ZERO,
+            snipe_tax: None,
+        }
+    }
+
+    /// The point-in-time rule this query exists to enforce.
+    #[test]
+    fn the_dev_buy_is_only_a_buy_inside_the_launch_transaction() {
+        let mut h = History::in_memory().unwrap();
+        let curve = addr(101);
+        let launch_tx = B256::repeat_byte(1);
+
+        // A sniper buys three blocks after the launch. There was no dev buy at all.
+        h.insert_trades(&[buy(B256::repeat_byte(2), curve, 103, 0, 5_000)])
+            .unwrap();
+
+        assert_eq!(
+            h.dev_buy(curve, launch_tx).unwrap(),
+            None,
+            "a sniper's buy in a later block is not the dev buy; treating it as one feeds              a filter a fact from after the launch"
+        );
+        assert_eq!(
+            h.trades_for_curve(curve).unwrap().len(),
+            1,
+            "the trade is still there -- only the dev-buy question answers None"
+        );
+    }
+
+    #[test]
+    fn the_dev_buy_is_found_when_it_is_in_the_launch_transaction() {
+        let mut h = History::in_memory().unwrap();
+        let curve = addr(101);
+        let launch_tx = B256::repeat_byte(1);
+        h.insert_trades(&[
+            buy(launch_tx, curve, 100, 4, 10_000),
+            buy(B256::repeat_byte(2), curve, 103, 0, 5_000),
+        ])
+        .unwrap();
+
+        let dev = h.dev_buy(curve, launch_tx).unwrap().expect("the dev buy");
+        assert_eq!(dev.amount_out, U256::from(10_000u64));
+        assert_eq!(dev.block, 100);
+    }
+
+    #[test]
+    fn a_sell_in_the_launch_transaction_is_not_the_dev_buy() {
+        let mut h = History::in_memory().unwrap();
+        let curve = addr(101);
+        let launch_tx = B256::repeat_byte(1);
+        let mut sell = buy(launch_tx, curve, 100, 2, 1);
+        sell.side = Side::Sell;
+        h.insert_trades(&[sell]).unwrap();
+        assert_eq!(h.dev_buy(curve, launch_tx).unwrap(), None);
     }
 
     #[test]

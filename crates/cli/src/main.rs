@@ -18,6 +18,7 @@ use quarrel_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
 use quarrel_chain::rpc::Client;
 use quarrel_chain::transport::{LiveTransport, RecordingTransport, ReplayTransport, Transport};
 use quarrel_chain::{addr, doctor};
+use quarrel_core::strategy::StrategyConfig;
 use quarrel_indexer::run::{IndexPlan, run as run_index};
 use quarrel_indexer::verify;
 use quarrel_store::{History, Lock};
@@ -111,6 +112,24 @@ enum Command {
         /// Stop after this many curves, for a quick read on a large store.
         #[arg(long)]
         limit: Option<usize>,
+    },
+
+    /// Run a saved strategy over the indexed window.
+    ///
+    /// Needs no network. Prints the funnel, the §5.5 guards and the §5.4 framing exactly
+    /// as the Lab will show them, so the terminal and the UI cannot drift apart.
+    Backtest {
+        /// A `StrategyConfig` as JSON. Defaults to the built-in baseline of §7.1.
+        #[arg(long, value_name = "FILE")]
+        strategy: Option<PathBuf>,
+        #[arg(long, default_value = "data")]
+        data_dir: PathBuf,
+        /// Print the whole result as JSON instead of the human summary.
+        #[arg(long)]
+        json: bool,
+        /// Write the default strategy to stdout and exit, as a starting point to edit.
+        #[arg(long)]
+        print_default: bool,
     },
 }
 
@@ -284,24 +303,43 @@ async fn main() -> Result<()> {
             );
             println!();
 
+            // Owned by the closure, which the indexer keeps for the length of the run.
             let mut last_line = std::time::Instant::now();
-            let report = run_index(&client, &mut history, &plan, |p| {
-                if last_line.elapsed() >= Duration::from_millis(500) {
-                    last_line = std::time::Instant::now();
-                    let e = p.event();
-                    println!(
-                        "  {:>5.1}%  {:<16} {:>9}/{:<9}  rows {:<9} {}",
-                        e.percent_x10 as f64 / 10.0,
-                        e.phase_label,
-                        e.units_done,
-                        e.units_total,
-                        e.rows_written,
-                        e.eta_secs
-                            .map(|s| format!("eta {}m{:02}s", s / 60, s % 60))
-                            .unwrap_or_default()
-                    );
-                }
-            })
+            let mut reported_done: Option<&'static str> = None;
+            let report = run_index(
+                &client,
+                &mut history,
+                &plan,
+                Box::new(move |e| {
+                    // Throttled to twice a second, but a completed phase always prints its
+                    // real totals. Without that the last line of a phase is a stale snapshot:
+                    // the run that found this showed "launches 856501/856501 rows 6373" for a
+                    // phase that had in fact written 24,984 rows, because the final chunks
+                    // landed inside the throttle window.
+                    let complete = e.units_total > 0 && e.units_done >= e.units_total;
+                    let first_report_of_completion =
+                        complete && reported_done != Some(e.phase_label);
+                    if first_report_of_completion {
+                        reported_done = Some(e.phase_label);
+                    }
+                    if first_report_of_completion
+                        || last_line.elapsed() >= Duration::from_millis(500)
+                    {
+                        last_line = std::time::Instant::now();
+                        println!(
+                            "  {:>5.1}%  {:<16} {:>9}/{:<9}  rows {:<9} {}",
+                            e.percent_x10 as f64 / 10.0,
+                            e.phase_label,
+                            e.units_done,
+                            e.units_total,
+                            e.rows_written,
+                            e.eta_secs
+                                .map(|s| format!("eta {}m{:02}s", s / 60, s % 60))
+                                .unwrap_or_default()
+                        );
+                    }
+                }),
+            )
             .await?;
 
             if let Some(rec) = recorder {
@@ -458,7 +496,166 @@ async fn main() -> Result<()> {
             );
             Ok(())
         }
+
+        Command::Backtest {
+            strategy,
+            data_dir,
+            json,
+            print_default,
+        } => {
+            if *print_default {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&StrategyConfig::default())?
+                );
+                return Ok(());
+            }
+
+            let config = match strategy {
+                Some(p) => {
+                    let raw = std::fs::read_to_string(p)
+                        .with_context(|| format!("reading {}", p.display()))?;
+                    serde_json::from_str::<StrategyConfig>(&raw)
+                        .with_context(|| format!("parsing {} as a strategy", p.display()))?
+                }
+                None => StrategyConfig::default(),
+            };
+
+            let db_path = data_dir.join("history.db");
+            let history = History::open_read_only(&db_path)
+                .with_context(|| format!("opening {}", db_path.display()))?;
+            let result = quarrel_backtest::run(&history, &config)?;
+
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                return Ok(());
+            }
+            print_backtest(&result);
+            Ok(())
+        }
     }
+}
+
+/// The terminal rendering of a backtest, kept beside the Lab's so they cannot drift.
+///
+/// Everything §5.5 makes mandatory is printed unconditionally: the funnel, the effective
+/// universe, the cutoff, and the regime warning.
+fn print_backtest(r: &quarrel_backtest::BacktestResult) {
+    use quarrel_backtest::metrics::Results;
+
+    println!();
+    println!(
+        "== window ==  blocks {}..{} ({:.1} h), maturity cutoff {} h",
+        r.window.from_block,
+        r.window.to_block,
+        r.window.hours_x10 as f64 / 10.0,
+        r.window.maturity_cutoff_hours
+    );
+    println!();
+    println!("== funnel ==");
+    println!();
+    for s in &r.funnel.stages {
+        // `of` matters where the funnel branches: `reached_target` and `migrated` both
+        // narrow `priced` and neither narrows the other, so printing them as a chain would
+        // read as a containment that is not there.
+        let base = match &s.of {
+            Some(of) if of != "all_launches" => format!("  (of {of})"),
+            _ => String::new(),
+        };
+        println!(
+            "  {:>9}  -{:<8}  {}{}",
+            s.remaining, s.removed, s.label, base
+        );
+    }
+
+    println!();
+    match &r.results {
+        Results::InsufficientSample {
+            passed, required, ..
+        } => {
+            // Spec §5.5: not a warning beside a number. There is no number.
+            println!("== result ==");
+            println!();
+            println!("  sample too small — {passed} tokens passed, {required} needed");
+            println!("  no hit rate and no distribution is shown at this sample size.");
+        }
+        Results::Measured(m) => {
+            println!("== result ==");
+            println!();
+            println!("  target      {}", m.target);
+            println!(
+                "  hit rate    {:.1}%  ({} of {})",
+                m.hit_rate_bps as f64 / 100.0,
+                m.hits,
+                m.measured_over
+            );
+            println!("  migrations  {}", m.migrations);
+            println!();
+            println!("  == held for a fixed time, which is what a rule could have done ==");
+            for h in [&m.hold_5m, &m.hold_30m] {
+                println!();
+                println!("  {}", h.assumption);
+                println!(
+                    "    p10 {:<8} p25 {:<8} p50 {:<8} p75 {:<8} p90 {:<8}",
+                    mult(h.multiple.p10),
+                    mult(h.multiple.p25),
+                    mult(h.multiple.p50),
+                    mult(h.multiple.p75),
+                    mult(h.multiple.p90)
+                );
+                println!(
+                    "    above entry {}   below entry {}   measured over {}",
+                    h.above_entry, h.below_entry, h.measured_over
+                );
+            }
+            println!();
+            println!("  == {} ==", m.peak.label);
+            println!(
+                "    p10 {:<8} p25 {:<8} p50 {:<8} p75 {:<8} p90 {:<8}",
+                mult(m.peak.multiple.p10),
+                mult(m.peak.multiple.p25),
+                mult(m.peak.multiple.p50),
+                mult(m.peak.multiple.p75),
+                mult(m.peak.multiple.p90)
+            );
+            println!(
+                "    never traded above entry {} of {}",
+                m.peak.never_above_entry, m.peak.measured_over
+            );
+        }
+    }
+
+    println!();
+    println!("== regime ==");
+    println!();
+    for line in wrap(&r.regime_warning, 76) {
+        println!("  {line}");
+    }
+    println!();
+    println!("  light-half query {} ms", r.query_ms);
+}
+
+/// Basis points as a multiple, without floating point (spec §12).
+fn mult(bps: u64) -> String {
+    format!("{}.{:02}x", bps / 10_000, (bps % 10_000) / 100)
+}
+
+fn wrap(s: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut line = String::new();
+    for word in s.split_whitespace() {
+        if !line.is_empty() && line.len() + 1 + word.len() > width {
+            out.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        out.push(line);
+    }
+    out
 }
 
 fn pct(n: u64, total: u64) -> f64 {

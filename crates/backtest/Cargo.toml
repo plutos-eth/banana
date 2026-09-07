@@ -9,6 +9,12 @@ license.workspace = true
 quarrel-core = { workspace = true }
 quarrel-store = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 alloy-primitives = { workspace = true }
+
+[dev-dependencies]
+# The point-in-time regression drives the real feature builder rather than a copy of it:
+# a test that reimplements the thing it is testing proves nothing.
+quarrel-indexer = { workspace = true }

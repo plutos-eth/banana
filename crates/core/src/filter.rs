@@ -174,7 +174,9 @@ impl Condition {
                 }
             }
             Condition::DevBuyBps { min: lo, max: hi } => {
-                let v = f.dev_buy_bps;
+                let Some(v) = f.dev_buy_bps else {
+                    return Some(unreadable(id, "dev_buy"));
+                };
                 if let Some(min) = *lo
                     && v < min
                 {
@@ -193,22 +195,20 @@ impl Condition {
                 }
                 None
             }
-            Condition::MaxCreatorTaxBps { bps: max } => (f.creator_tax_bps > *max).then(|| {
-                Refusal::new(
-                    id,
-                    format!(
-                        "creator_tax {} > ceiling {}",
-                        pct(f.creator_tax_bps),
-                        pct(*max)
-                    ),
-                )
-            }),
-            Condition::MaxExemptWallets { max } => (f.exempt_wallets > *max).then(|| {
-                Refusal::new(
-                    id,
-                    format!("{} exempt wallets > ceiling {}", f.exempt_wallets, max),
-                )
-            }),
+            Condition::MaxCreatorTaxBps { bps: max } => match f.creator_tax_bps {
+                None => Some(unreadable(id, "creator_tax")),
+                Some(v) => (v > *max).then(|| {
+                    Refusal::new(
+                        id,
+                        format!("creator_tax {} > ceiling {}", pct(v), pct(*max)),
+                    )
+                }),
+            },
+            Condition::MaxExemptWallets { max } => match f.exempt_wallets {
+                None => Some(unreadable(id, "exempt_wallets")),
+                Some(v) => (v > *max)
+                    .then(|| Refusal::new(id, format!("{v} exempt wallets > ceiling {max}"))),
+            },
             Condition::FeeRecipientIs { recipient: want } => {
                 (f.fee_recipient != *want).then(|| {
                     Refusal::new(
@@ -273,6 +273,18 @@ impl Condition {
                 .then(|| Refusal::new(id, format!("keyword /{}/ not found", p.as_str()))),
         }
     }
+}
+
+/// A field the launch transaction did not yield.
+///
+/// Refusing is the honest direction, and it is the same call [`Presence::Unknown`] makes
+/// for socials: a rule with a ceiling must not pass a launch whose value was never read,
+/// because that is the failure mode that flatters the backtest. The funnel counts these.
+fn unreadable(id: &'static str, field: &str) -> Refusal {
+    Refusal::new(
+        id,
+        format!("{field} unreadable (launch transaction did not decode)"),
+    )
 }
 
 fn social(id: &'static str, which: &str, p: Presence) -> Option<Refusal> {
@@ -426,9 +438,9 @@ mod tests {
                 website: Presence::Present,
                 telegram: Presence::Absent,
             },
-            exempt_wallets: 0,
-            dev_buy_bps: 300,
-            creator_tax_bps: 100,
+            exempt_wallets: Some(0),
+            dev_buy_bps: Some(300),
+            creator_tax_bps: Some(100),
             fee_recipient: FeeRecipient::Deployer,
             deployer_launches: 0,
             deployer_graduations: 0,
@@ -524,11 +536,11 @@ mod tests {
         };
         let mut f = clean();
 
-        f.dev_buy_bps = 50;
+        f.dev_buy_bps = Some(50);
         let d = EntryFilter::all_of([band.clone()]).evaluate(&f);
         assert_eq!(d.refusals[0].detail, "dev_buy 0.50% < floor 1.00%");
 
-        f.dev_buy_bps = 900;
+        f.dev_buy_bps = Some(900);
         let d = EntryFilter::all_of([band]).evaluate(&f);
         assert_eq!(d.refusals[0].detail, "dev_buy 9.00% > ceiling 6.00%");
     }
@@ -537,7 +549,7 @@ mod tests {
     fn creator_tax_refusal_reads_exactly_as_the_spec_requires() {
         // Spec §3.4 gives this literal example.
         let mut f = clean();
-        f.creator_tax_bps = 600;
+        f.creator_tax_bps = Some(600);
         let d = EntryFilter::all_of([Condition::MaxCreatorTaxBps { bps: 200 }]).evaluate(&f);
         assert_eq!(d.refusals[0].detail, "creator_tax 6.00% > ceiling 2.00%");
         assert_eq!(d.reasons()[0], "refused: creator_tax 6.00% > ceiling 2.00%");
@@ -546,7 +558,7 @@ mod tests {
     #[test]
     fn exempt_wallets_refuses_a_declared_bundle() {
         let mut f = clean();
-        f.exempt_wallets = 4;
+        f.exempt_wallets = Some(4);
         let d = EntryFilter::all_of([Condition::MaxExemptWallets { max: 2 }]).evaluate(&f);
         assert_eq!(d.refusals[0].detail, "4 exempt wallets > ceiling 2");
     }
@@ -607,9 +619,9 @@ mod tests {
         // Third-party fee recipient, heavy dev buy, a declared bundle, high creator tax.
         let mut f = clean();
         f.fee_recipient = FeeRecipient::ThirdParty;
-        f.dev_buy_bps = 1_500;
-        f.exempt_wallets = 6;
-        f.creator_tax_bps = 500;
+        f.dev_buy_bps = Some(1_500);
+        f.exempt_wallets = Some(6);
+        f.creator_tax_bps = Some(500);
 
         let filter = EntryFilter::All(vec![
             EntryFilter::Cond(Condition::DevBuyBps {
@@ -732,7 +744,7 @@ mod tests {
     #[test]
     fn nested_trees_evaluate_correctly() {
         let mut f = clean();
-        f.creator_tax_bps = 900;
+        f.creator_tax_bps = Some(900);
         // (twitter AND (tax<=200 OR dev_buy in range))
         let filter = EntryFilter::All(vec![
             EntryFilter::Cond(Condition::RequireTwitter),
@@ -746,7 +758,7 @@ mod tests {
         ]);
         assert!(filter.evaluate(&f).passed, "the OR is satisfied by dev_buy");
 
-        f.dev_buy_bps = 5_000;
+        f.dev_buy_bps = Some(5_000);
         assert!(
             !filter.evaluate(&f).passed,
             "now neither branch of the OR holds"

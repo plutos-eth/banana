@@ -115,14 +115,40 @@ pub struct ProgressEvent {
     pub eta_secs: Option<u64>,
 }
 
+/// Where a [`ProgressEvent`] is delivered as it happens.
+///
+/// `'static` so `Progress` needs no lifetime parameter; a caller that wants to keep
+/// per-call state puts it behind an `Arc` rather than borrowing from its stack.
+pub type Sink = Box<dyn FnMut(&ProgressEvent) + Send + 'static>;
+
 /// Tracks all four phases and produces weighted overall progress.
-#[derive(Debug)]
+///
+/// The sink fires on **every** advance, not once per phase. That distinction is the whole
+/// value of the type: with a per-phase callback a 40-minute index printed four lines, which
+/// is indistinguishable from a hung process, and a Tauri progress bar fed from it would
+/// move four times.
 pub struct Progress {
     phases: [(Phase, PhaseProgress); 4],
     current: Phase,
     started: Instant,
     /// Set when a phase is skipped, so its weight is not counted as outstanding.
     skipped: [bool; 4],
+    sink: Option<Sink>,
+    /// Overall progress when the current phase began, and when that was. The ETA
+    /// extrapolates from the current phase's rate rather than the run's average.
+    baseline_permille: u32,
+    phase_started: Instant,
+}
+
+impl std::fmt::Debug for Progress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Progress")
+            .field("phases", &self.phases)
+            .field("current", &self.current)
+            .field("skipped", &self.skipped)
+            .field("sink", &self.sink.as_ref().map(|_| "<fn>"))
+            .finish()
+    }
 }
 
 impl Default for Progress {
@@ -138,6 +164,23 @@ impl Progress {
             current: Phase::Launches,
             started: Instant::now(),
             skipped: [false; 4],
+            sink: None,
+            baseline_permille: 0,
+            phase_started: Instant::now(),
+        }
+    }
+
+    /// Deliver every subsequent event to `sink`.
+    pub fn with_sink(mut self, sink: Sink) -> Self {
+        self.sink = Some(sink);
+        self
+    }
+
+    /// Emit the current state. Called after every mutation.
+    fn emit(&mut self) {
+        let e = self.event();
+        if let Some(sink) = self.sink.as_mut() {
+            sink(&e);
         }
     }
 
@@ -150,6 +193,10 @@ impl Progress {
         let i = Self::index(phase);
         self.phases[i].1.units_total = units_total;
         self.phases[i].1.started = true;
+        // Re-baseline: the ETA extrapolates the remaining weight at *this* phase's rate.
+        self.baseline_permille = self.overall_permille();
+        self.phase_started = Instant::now();
+        self.emit();
     }
 
     /// Mark a phase as not running at all (for example `--skip-calldata`).
@@ -164,16 +211,19 @@ impl Progress {
         let i = Self::index(phase);
         self.phases[i].1.units_done += units;
         self.phases[i].1.rows_written += rows;
+        self.emit();
     }
 
     pub fn set_done(&mut self, phase: Phase, units_done: u64) {
         let i = Self::index(phase);
         self.phases[i].1.units_done = units_done;
+        self.emit();
     }
 
     pub fn finish(&mut self, phase: Phase) {
         let i = Self::index(phase);
         self.phases[i].1.units_done = self.phases[i].1.units_total;
+        self.emit();
     }
 
     fn active_weight(&self) -> u32 {
@@ -205,18 +255,29 @@ impl Progress {
         self.started.elapsed()
     }
 
-    /// Remaining time, extrapolated from overall progress so far.
+    /// Remaining time, extrapolated from the progress **this run** has made.
     ///
     /// `None` until enough has happened for the estimate to mean anything -- an ETA
     /// computed from 0.3% done is noise, and showing it is worse than showing nothing.
+    ///
+    /// The baseline is what makes a resume honest. An interrupted index that already has
+    /// its launches, anchors and trades reaches 55% in two seconds, and averaging wall-clock
+    /// over *total* progress then claims the whole run will take three seconds. Measured on
+    /// a real resume: it showed "eta 2m50s" against twenty minutes of remaining work.
+    ///
+    /// Re-baselining per phase also fixes a fresh run. The weights are per-mille of expected
+    /// *time*, so the current phase's seconds-per-permille is the right thing to extrapolate
+    /// with; a run-wide average is dominated by whichever phase happened to go first.
     pub fn eta(&self) -> Option<Duration> {
         let done = self.overall_permille();
-        if !(20..1_000).contains(&done) {
+        let progressed = done.saturating_sub(self.baseline_permille);
+        let remaining = 1_000u32.saturating_sub(done);
+        if progressed < 5 || remaining == 0 {
             return None;
         }
-        let elapsed = self.started.elapsed().as_secs_f64();
-        let total = elapsed * 1_000.0 / done as f64;
-        Some(Duration::from_secs_f64((total - elapsed).max(0.0)))
+        let elapsed = self.phase_started.elapsed().as_secs_f64();
+        let per_mille = elapsed / progressed as f64;
+        Some(Duration::from_secs_f64(per_mille * remaining as f64))
     }
 
     pub fn event(&self) -> ProgressEvent {
@@ -237,6 +298,95 @@ impl Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// The defect this test exists for: with the callback wired at phase boundaries only,
+    /// a 40-minute index emitted four events. Monotonic, and useless.
+    #[test]
+    fn every_advance_emits_not_just_every_phase() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = {
+            let seen = seen.clone();
+            Box::new(move |e: &ProgressEvent| seen.lock().unwrap().push(e.units_done))
+        };
+        let mut p = Progress::new().with_sink(sink);
+
+        p.begin(Phase::Trades, 100);
+        for _ in 0..10 {
+            p.advance(Phase::Trades, 10, 5);
+        }
+        p.finish(Phase::Trades);
+
+        let seen = seen.lock().unwrap();
+        assert_eq!(
+            seen.len(),
+            12,
+            "one for begin, ten for the chunks, one for finish -- got {seen:?}"
+        );
+        assert_eq!(seen.last(), Some(&100));
+    }
+
+    #[test]
+    fn the_emitted_units_never_go_backwards() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = {
+            let seen = seen.clone();
+            Box::new(move |e: &ProgressEvent| seen.lock().unwrap().push(e.percent_x10))
+        };
+        let mut p = Progress::new().with_sink(sink);
+        p.begin(Phase::Launches, 10);
+        for _ in 0..10 {
+            p.advance(Phase::Launches, 1, 0);
+        }
+        p.finish(Phase::Launches);
+        p.begin(Phase::Trades, 10);
+        for _ in 0..10 {
+            p.advance(Phase::Trades, 1, 0);
+        }
+        p.finish(Phase::Trades);
+
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.windows(2).all(|w| w[1] >= w[0]),
+            "progress must be monotonic across phases: {seen:?}"
+        );
+    }
+
+    /// The ETA on a resumed run, which is where the old one was wildly wrong.
+    #[test]
+    fn a_resume_does_not_claim_the_run_is_nearly_over() {
+        let mut p = Progress::new();
+        // Launches, anchors and trades all resume as already complete: one unit each,
+        // finished instantly. That is 55% of the weight in no time at all.
+        for phase in [Phase::Launches, Phase::Anchors, Phase::Trades] {
+            p.begin(phase, 1);
+            p.advance(phase, 1, 0);
+            p.finish(phase);
+        }
+        assert_eq!(p.overall_permille(), 550);
+
+        // Now the real work starts, and one per cent of it has taken a measurable while.
+        p.begin(Phase::Calldata, 1_000);
+        p.advance(Phase::Calldata, 100, 100);
+
+        let eta = p.eta().expect("an ETA once the phase has made progress");
+        // The old formula divided total elapsed by total progress and produced seconds.
+        // The remaining 40% must be estimated from the 4.5% this phase has actually done.
+        assert!(
+            eta.as_secs_f64() > 0.0,
+            "a resumed run must not report that it is already finished"
+        );
+        let done_now = p.overall_permille();
+        assert!(done_now > 550 && done_now < 1_000);
+    }
+
+    #[test]
+    fn a_progress_with_no_sink_still_works() {
+        let mut p = Progress::new();
+        p.begin(Phase::Trades, 10);
+        p.advance(Phase::Trades, 5, 0);
+        assert_eq!(p.event().units_done, 5);
+    }
 
     #[test]
     fn the_weights_sum_to_one_thousand() {

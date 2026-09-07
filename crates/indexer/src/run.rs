@@ -11,6 +11,7 @@ use alloy_primitives::{Address, U256};
 use quarrel_chain::gate::Priority;
 use quarrel_chain::rpc::Client;
 use quarrel_core::curve::LaunchConfig;
+use quarrel_core::features::Socials;
 use quarrel_store::history::{History, OutcomeRow, PitFeaturesRow};
 use quarrel_store::types::EntryRule;
 
@@ -68,15 +69,15 @@ pub struct IndexReport {
     pub elapsed_secs: u64,
 }
 
-/// Run the index. Emits progress through `on_progress`.
+/// Run the index. Emits progress through `sink`, on every advance rather than once a phase.
 pub async fn run(
     client: &Client,
     history: &mut History,
     plan: &IndexPlan,
-    mut on_progress: impl FnMut(&Progress),
+    sink: crate::progress::Sink,
 ) -> Result<IndexReport, ScanError> {
     let started = std::time::Instant::now();
-    let mut progress = Progress::new();
+    let mut progress = Progress::new().with_sink(sink);
     if plan.skip_calldata {
         progress.skip(Phase::Calldata);
     }
@@ -127,7 +128,6 @@ pub async fn run(
     let a_from = resume(history, Phase::Launches, plan.from_block);
     report.launch_rows =
         scan::scan_launches(client, history, &mut progress, a_from, plan.to_block).await?;
-    on_progress(&progress);
 
     // --- D before C, so timestamps exist while outcomes are computed -------------------
     let d_from = resume(history, Phase::Anchors, plan.from_block);
@@ -140,13 +140,11 @@ pub async fn run(
         plan.anchor_every,
     )
     .await?;
-    on_progress(&progress);
 
     // --- B ---------------------------------------------------------------------------
     let b_from = resume(history, Phase::Trades, plan.from_block);
     report.trade_rows =
         scan::scan_trades(client, history, &mut progress, b_from, plan.to_block).await?;
-    on_progress(&progress);
 
     // Pair economics: one read per distinct pair token, needed before outcomes because a
     // curve cannot be replayed without its pair's phantom reserve.
@@ -156,7 +154,6 @@ pub async fn run(
     if !plan.skip_calldata {
         report.enrichment_rows =
             scan::scan_calldata(client, history, &mut progress, plan.calldata_concurrency).await?;
-        on_progress(&progress);
     }
 
     // --- derive ------------------------------------------------------------------------
@@ -205,12 +202,10 @@ fn derive(history: &mut History, plan: &IndexPlan) -> Result<(u64, u64, u64, u64
             Some(e) => Fingerprint::new(
                 e.dev_buy_quote,
                 e.creator_tax_bps,
-                e.socials.twitter.is_present(),
-                e.socials.website.is_present(),
-                e.socials.telegram.is_present(),
+                e.socials,
                 e.exempt_wallets,
             ),
-            None => Fingerprint::new(None, None, false, false, false, None),
+            None => Fingerprint::new(None, None, Socials::UNKNOWN, None),
         };
 
         let pit = builder.push(&LaunchFacts {

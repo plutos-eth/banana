@@ -18,12 +18,16 @@
 #![forbid(unsafe_code)]
 
 pub mod history;
+pub mod lab;
 pub mod lock;
 pub mod schema;
+pub mod sql;
 pub mod types;
 
 pub use history::History;
+pub use lab::{Candidate, Outcome, Window};
 pub use lock::{Lock, LockError};
+pub use sql::{SqlFilter, push_down};
 pub use types::{u256_from_blob, u256_to_blob};
 
 #[derive(Debug, thiserror::Error)]

@@ -330,7 +330,7 @@ pub async fn scan_calldata(
             let (token, tx_hash, curve) = (*token, *tx_hash, *curve);
             set.spawn(async move {
                 let tx = client.get_transaction(tx_hash, Priority::Bulk).await;
-                (token, curve, tx)
+                (token, tx_hash, curve, tx)
             });
         }
         let mut results = Vec::with_capacity(batch.len());
@@ -343,7 +343,7 @@ pub async fn scan_calldata(
         }
 
         let mut rows = Vec::new();
-        for (token, curve, tx) in results {
+        for (token, tx_hash, curve, tx) in results {
             let tx = match tx {
                 Ok(Some(tx)) => tx,
                 // A launch whose transaction cannot be read still gets a row, with
@@ -354,7 +354,9 @@ pub async fn scan_calldata(
                     continue;
                 }
             };
-            rows.push(build_enrichment(history, token, curve, &tx.input, supply)?);
+            rows.push(build_enrichment(
+                history, token, tx_hash, curve, &tx.input, supply,
+            )?);
         }
         written += history.insert_enrichment(&rows)? as u64;
         progress.advance(Phase::Calldata, batch.len() as u64, rows.len() as u64);
@@ -390,6 +392,7 @@ fn unknown_enrichment(token: Address, why: &str) -> EnrichmentRow {
 fn build_enrichment(
     history: &History,
     token: Address,
+    launch_tx: B256,
     curve: Address,
     input: &[u8],
     supply: U256,
@@ -398,13 +401,17 @@ fn build_enrichment(
 
     // Ground truth for the dev buy, whichever route created the token: the CurveBuy the
     // launch transaction itself emitted. Independent of whether the calldata decoded.
-    let dev = history
-        .trades_for_curve(curve)?
-        .into_iter()
-        .find(|t| t.side == Side::Buy);
+    //
+    // Restricted to the launch transaction, which is what makes this point-in-time. The
+    // first buy *on the curve* is not the same thing: when the deployer launches without
+    // buying, that first buy belongs to a sniper, in a later block, and using it here
+    // would feed a filter a fact from after the launch (spec §5.3).
+    let dev = history.dev_buy(curve, launch_tx)?;
+    // No buy in the launch transaction is a real, knowable zero: the deployer launched
+    // without buying. It is a different signal from `None`, which means unreadable.
     let (dev_quote, dev_tokens) = match &dev {
         Some(t) => (Some(t.amount_in), Some(t.amount_out)),
-        None => (None, None),
+        None => (Some(U256::ZERO), Some(U256::ZERO)),
     };
     let dev_bps = dev_tokens.and_then(|tk| {
         if supply.is_zero() {

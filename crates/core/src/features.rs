@@ -128,12 +128,21 @@ pub struct PitFeatures {
     pub description: String,
     pub socials: Socials,
     /// Wallets declared exempt from the opening tax at launch: the declared bundle.
-    pub exempt_wallets: u32,
+    ///
+    /// `None` when the launch transaction did not decode. Not zero: recording an
+    /// unreadable bundle as an empty one would let `max_exempt_wallets` pass a launch
+    /// whose bundle was never seen, which is [`Presence::Unknown`]'s mistake in a
+    /// different field.
+    pub exempt_wallets: Option<u32>,
 
     // --- from logs emitted in the launch transaction ----------------------------------
-    /// The launcher's own first buy, as basis points of total supply.
-    pub dev_buy_bps: Bps,
-    pub creator_tax_bps: Bps,
+    /// The launcher's own buy **in the launch transaction**, as basis points of supply.
+    ///
+    /// `Some(0)` is a real answer — the deployer launched without buying — and is a
+    /// different signal from `None`, which means the launch transaction was unreadable.
+    pub dev_buy_bps: Option<Bps>,
+    /// `None` when the launch transaction did not decode.
+    pub creator_tax_bps: Option<Bps>,
     pub fee_recipient: FeeRecipient,
 
     // --- from blocks strictly before launch_block -------------------------------------
@@ -195,9 +204,9 @@ mod tests {
             symbol: "WAFFLE".into(),
             description: "backed by a perp".into(),
             socials: Socials::NONE,
-            exempt_wallets: 0,
-            dev_buy_bps: 495,
-            creator_tax_bps: 0,
+            exempt_wallets: Some(0),
+            dev_buy_bps: Some(495),
+            creator_tax_bps: Some(0),
             fee_recipient: FeeRecipient::Deployer,
             deployer_launches: 0,
             deployer_graduations: 0,

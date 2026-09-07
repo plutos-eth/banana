@@ -8,3 +8,11 @@
 //! cutoff, sample-size gate, the mandatory funnel, and the regime warning.
 
 #![forbid(unsafe_code)]
+
+pub mod funnel;
+pub mod metrics;
+pub mod run;
+
+pub use funnel::{Funnel, Stage};
+pub use metrics::{HoldStats, MIN_SAMPLE, Measured, PeakStats, Percentiles, Results};
+pub use run::{BacktestError, BacktestResult, run};
