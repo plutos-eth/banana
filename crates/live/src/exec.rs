@@ -450,7 +450,13 @@ pub fn read_back(receipt: &Receipt, curve: Address, side: Side) -> (U256, U256, 
     for log in receipt.logs_from(curve) {
         let Some(t0) = log.topic0() else { continue };
         if t0 == want {
-            let words: Vec<U256> = log.data.chunks_exact(32).map(U256::from_be_slice).collect();
+            let words: Vec<U256> = log
+                .data
+                .as_chunks::<32>()
+                .0
+                .iter()
+                .map(|w| U256::from_be_bytes::<32>(*w))
+                .collect();
             if words.len() >= 2 {
                 // A buy is (quoteIn, tokensOut, ...); a sell is (tokensIn, quoteOut, ...).
                 let (a, b) = (words[0], words[1]);

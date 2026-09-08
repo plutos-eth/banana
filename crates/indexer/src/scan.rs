@@ -270,8 +270,10 @@ fn decode_trade_log(l: &RawLog, is_buy: bool) -> Option<TradeRow> {
     let recipient = topic_address(l, 2)?;
     let words: Vec<U256> = l
         .data
-        .chunks_exact(32)
-        .map(|c| U256::from_be_slice(c))
+        .as_chunks::<32>()
+        .0
+        .iter()
+        .map(|w| U256::from_be_bytes::<32>(*w))
         .collect();
     if words.len() < 4 {
         return None;

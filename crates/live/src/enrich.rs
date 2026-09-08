@@ -585,7 +585,13 @@ fn dev_buy_from(receipt: &Receipt, curve: Address) -> (Option<U256>, Option<U256
         if log.topic0() != Some(IPonsCurve::CurveBuy::SIGNATURE_HASH) {
             continue;
         }
-        let words: Vec<U256> = log.data.chunks_exact(32).map(U256::from_be_slice).collect();
+        let words: Vec<U256> = log
+            .data
+            .as_chunks::<32>()
+            .0
+            .iter()
+            .map(|w| U256::from_be_bytes::<32>(*w))
+            .collect();
         // quoteIn, tokensOut, fee, tax.
         if words.len() >= 2 {
             return (Some(words[0]), Some(words[1]));

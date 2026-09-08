@@ -50,8 +50,10 @@ pub fn decode(l: &RawLog) -> Option<LaunchLog> {
     // Non-indexed, in order: pairToken, launchConfigId, graduationThreshold.
     let words: Vec<U256> = l
         .data
-        .chunks_exact(32)
-        .map(|c| U256::from_be_slice(c))
+        .as_chunks::<32>()
+        .0
+        .iter()
+        .map(|w| U256::from_be_bytes::<32>(*w))
         .collect();
     if words.len() < 3 {
         return None;
