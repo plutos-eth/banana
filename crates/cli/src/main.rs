@@ -455,11 +455,9 @@ async fn main() -> Result<()> {
                 "  migrated             {} ({:.2}%, 1 in {})",
                 d.migrated,
                 pct(d.migrated, d.launches),
-                if d.migrated > 0 {
-                    d.launches / d.migrated
-                } else {
-                    0
-                }
+                // "1 in N". No migrations means there is no such N, and 0 is the honest
+                // stand-in here because the count beside it already says none.
+                d.launches.checked_div(d.migrated).unwrap_or(0)
             );
             println!(
                 "  no post-entry trade  {} ({:.1}%)",
