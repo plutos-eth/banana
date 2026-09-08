@@ -132,7 +132,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 Then:
 
 ```sh
-git clone https://github.com/OWNER/quarrel.git
+git clone https://github.com/plutos-eth/quarrel.git
 cd quarrel
 
 npm --prefix ui ci
