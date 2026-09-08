@@ -1,0 +1,119 @@
+# Build installers for every platform from a tagged commit, and publish them with checksums.
+#
+# The point of doing this in CI rather than on a laptop is that the binary a user downloads
+# is traceable to a commit they can read. The build is unsigned (see SECURITY.md), so the
+# checksums are the only thing standing between a download and trust — they are generated
+# here, in the same job that produced the files.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # Buildable on demand, so the workflow can be proven before a tag exists.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not delete the artifacts of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos (apple silicon)
+            os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - label: macos (intel)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - label: linux
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ""
+          - label: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # webkit2gtk is the webview on Linux. 22.04 rather than 24.04 because the AppImage
+      # produced on an older glibc runs on newer distributions and not the other way round.
+      - name: linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libxdo-dev build-essential curl wget file libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: build the frontend
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/app
+          args: ${{ matrix.args }}
+          # A draft, so the release can be read before anyone can download it. Publishing
+          # is a human pressing a button, which is the right shape for a tool that holds
+          # a private key.
+          releaseDraft: true
+          tagName: ${{ github.ref_name }}
+          releaseName: quarrel ${{ github.ref_name }}
+          releaseBody: |
+            Builds are **unsigned**. Your operating system will warn you; the README says
+            how to get past it on each platform, and why it is unsigned.
+
+            Verify what you downloaded against `SHA256SUMS.txt` before running something
+            that will hold a private key.
+
+            **No LIVE trade has ever been executed on mainnet.** See the README.
+
+  # Runs after every platform has uploaded, so the sums cover the whole set.
+  checksums:
+    name: checksums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: hash every asset on the draft release and attach the list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist && cd dist
+          gh release download "$TAG" --clobber
+          # `sha256sum -c` reads this format directly, which is the point of using it.
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber

@@ -1,3 +1,8 @@
+# Every check that gates a merge.
+#
+# The three invariant scripts are here rather than in a review checklist because each of
+# them protects something a reviewer would have to remember: the private key stays in one
+# crate, the webview cannot reach the network, and no style value escapes tokens.css.
 name: ci
 
 on:
@@ -10,56 +15,118 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # The product is a Windows desktop application, so Windows is the build of record.
+  # Correctness runs on every platform the project ships to. It used to be Windows only,
+  # which is fine for a Windows tool and useless for one that publishes a .dmg.
   rust:
-    name: rust (windows)
-    runs-on: windows-latest
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
     steps:
       - uses: actions/checkout@v4
+
+      - name: linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libxdo-dev build-essential libssl-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
 
+      # The frontend is compiled into the app crate, so it has to exist before cargo runs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: frontend
+        working-directory: ui
+        run: npm ci && npm run build
+
+      # Formatting and lints are platform-independent; running them three times is noise.
       - name: fmt
+        if: matrix.os == 'windows-latest'
         run: cargo fmt --all -- --check
 
       - name: clippy
+        if: matrix.os == 'windows-latest'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: test
         run: cargo test --workspace
 
-      # Spec sec.3.8 / sec.4: `live` is the only crate that may see a private key, and
-      # `core` must stay offline. Enforced, not documented.
-      - name: trust boundary
-        shell: pwsh
-        run: ./scripts/check-trust-boundary.ps1
-
-  ui:
-    name: ui
-    runs-on: windows-latest
+  invariants:
+    name: invariants
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "20"
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
-      - name: install
+      - name: typecheck and build the frontend
         working-directory: ui
-        run: npm ci
+        run: npm ci && npm run build
 
-      - name: typecheck and build
-        working-directory: ui
-        run: npm run build
+      # §3.8: `live` is the only crate that may see a private key, and `core` must stay
+      # offline. Enforced, not documented.
+      - name: trust boundary
+        shell: pwsh
+        run: ./scripts/check-trust-boundary.ps1
 
-      # Spec sec.8 (no hard-coded style values) and sec.3.1 (the CSP that makes
-      # attacker-supplied URL fetching impossible rather than merely tested against).
+      # §8 (no hard-coded style values) and §3.1 (the CSP that makes fetching an
+      # attacker-supplied URL impossible rather than merely tested against).
       - name: ui invariants
         shell: pwsh
         run: ./scripts/check-ui-invariants.ps1
+
+  # A tagged build is expensive to discover broken, so the packaging path is exercised on
+  # every pull request without publishing anything.
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libxdo-dev build-essential libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package-${{ matrix.os }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: frontend
+        working-directory: ui
+        run: npm ci && npm run build
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/app

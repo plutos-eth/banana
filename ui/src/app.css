@@ -3,8 +3,8 @@
  * pixel value, no font stack. `scripts/check-ui-invariants.ps1` fails the build otherwise.
  *
  * This is the design pass spec §8 reserved: the shapes below come from
- * `refference_design/quarrel.html`. Not one component was rewritten to accept them — the
- * class names are the ones the views already used, which is what the invariant was for.
+ * a design render. Not one component was rewritten to accept them — the class names are
+ * the ones the views already used, which is what the invariant was for.
  *
  * Class names describe function, not appearance: `.is-pass`, not `.green`.
  *
@@ -52,6 +52,15 @@
 }
 .titlebar__controls {
   display: flex;
+}
+/* macOS draws its own controls, in its own place, over this bar (see
+   `crates/app/tauri.macos.conf.json`). Ours would be three buttons on the wrong side of a
+   window that already has three on the right side. */
+.is-macos .titlebar {
+  padding-left: var(--w-traffic-lights);
+}
+.is-macos .titlebar__controls {
+  display: none;
 }
 .winbtn {
   width: var(--w-winbtn);

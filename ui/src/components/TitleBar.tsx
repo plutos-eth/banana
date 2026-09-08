@@ -18,6 +18,13 @@
  * `data-tauri-drag-region` is handled by the webview itself, so a drag is not a stream of
  * IPC calls. The buttons opt out of it explicitly — without that, clicking one starts a
  * drag instead of pressing it.
+ *
+ * # macOS
+ *
+ * The window keeps its decorations there and `titleBarStyle: "Overlay"` floats the real
+ * traffic lights over this bar. The three buttons below are hidden by CSS and the bar is
+ * padded to leave room, so a mac user gets the controls in the place and the order their
+ * system puts them — not ours on the wrong side.
  */
 
 import { hasBackend } from "../ipc";

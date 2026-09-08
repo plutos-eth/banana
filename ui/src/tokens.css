@@ -3,8 +3,8 @@
  *
  * Spec §8 said the visual style would be replaced in a later pass against design renders,
  * and that the pass must be an edit to THIS FILE plus small per-component adjustments,
- * never a component rewrite. This is that pass: the values below come from
- * `refference_design/quarrel.css`, and not one component changed shape to accept them.
+ * never a component rewrite. This is that pass: the values below come from a design
+ * render, and not one component changed shape to accept them.
  *
  * So the rule stands: no component anywhere may contain a colour literal, a px value, or
  * a font stack. `scripts/check-ui-invariants.ps1` enforces it in CI.
@@ -192,6 +192,8 @@
   /* The window's own titlebar, because the window is undecorated. */
   --h-titlebar: 34px;
   --w-winbtn: 42px;
+  /* Room for the macOS traffic lights, which the system draws over our own titlebar. */
+  --w-traffic-lights: 78px;
   --sz-dot: 8px;
   --h-topbar: 52px;
   --h-statusbar: 30px;

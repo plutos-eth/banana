@@ -14,6 +14,13 @@ import "./base.css";
 import "./app.css";
 import { App } from "./App";
 
+// Window controls sit on the right on Windows and Linux, and on the left on macOS, where
+// the system draws them itself. Read from the user agent rather than through Tauri's OS
+// plugin: this only decides a layout, and it should not cost a permission or an IPC call.
+if (typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent)) {
+  document.documentElement.classList.add("is-macos");
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 

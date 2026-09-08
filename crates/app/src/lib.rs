@@ -29,6 +29,23 @@ pub use state::{AppError, AppState, Mode};
 ///    directory keeps working exactly as before.
 /// 3. `<directory of the executable>/data`, which is what a double-click gets: the store
 ///    sits beside the program, where the user can see it, move it and back it up.
+/// Where the store, the strategy and the key live.
+///
+/// Four places, in order, and the order is what makes both a developer checkout and an
+/// installed application work without either knowing about the other:
+///
+/// 1. `--data-dir <path>`, which wins outright.
+/// 2. `./data`, **if it already exists**. A checkout has one, so `cargo run` from the
+///    repository uses the store you indexed there.
+/// 3. `<exe dir>/data`, **if it already exists**. This was the fallback before there was
+///    a per-OS one, so an existing portable install keeps its store instead of silently
+///    starting empty beside it.
+/// 4. The platform's own application-data directory, created if missing.
+///
+/// The last one is not a nicety. On macOS an installed binary lives inside
+/// `Quarrel.app/Contents/MacOS`, so writing beside the executable puts a 1 GB database
+/// inside the bundle — which breaks code signing, is thrown away by the next update, and
+/// on Linux is simply not writable when the binary sits in `/usr/bin`.
 fn data_dir() -> std::path::PathBuf {
     if let Some(explicit) = std::env::args()
         .skip_while(|a| a != "--data-dir")
@@ -41,10 +58,38 @@ fn data_dir() -> std::path::PathBuf {
     if cwd.is_dir() {
         return cwd;
     }
-    std::env::current_exe()
+    if let Some(beside) = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|d| d.join("data")))
-        .unwrap_or(cwd)
+        .filter(|d| d.is_dir())
+    {
+        return beside;
+    }
+    platform_data_dir()
+}
+
+/// The conventional place for an application's own files on this platform.
+///
+/// Resolved from the environment rather than through a crate: it is three rules, they do
+/// not change, and a dependency that reads the same variables is not more correct for
+/// being someone else's.
+fn platform_data_dir() -> std::path::PathBuf {
+    let home = |var: &str| std::env::var_os(var).map(std::path::PathBuf::from);
+
+    #[cfg(target_os = "windows")]
+    let base = home("APPDATA").or_else(|| home("LOCALAPPDATA"));
+
+    #[cfg(target_os = "macos")]
+    let base = home("HOME").map(|h| h.join("Library").join("Application Support"));
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let base = home("XDG_DATA_HOME").or_else(|| home("HOME").map(|h| h.join(".local/share")));
+
+    // A machine with neither a home directory nor the variables that name one is not one
+    // this application can be installed on, so the working directory is the honest last
+    // resort rather than a panic on startup.
+    base.unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("quarrel")
 }
 
 /// Build and run the desktop application.
