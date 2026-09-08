@@ -17,18 +17,6 @@ pub mod state;
 
 pub use state::{AppError, AppState, Mode};
 
-/// Where the store and the strategy live.
-///
-/// Resolved so that double-clicking the executable works, which it did not when this was
-/// simply `"data"`: launched from Explorer the working directory is wherever the icon
-/// happens to point, so a relative path found an empty store and the app reported no
-/// launches. Three rules, in order, each with a reason:
-///
-/// 1. `--data-dir <path>`, for scripts and for a second store.
-/// 2. `./data` **if it already exists** — a terminal or a cron job run from the project
-///    directory keeps working exactly as before.
-/// 3. `<directory of the executable>/data`, which is what a double-click gets: the store
-///    sits beside the program, where the user can see it, move it and back it up.
 /// Where the store, the strategy and the key live.
 ///
 /// Four places, in order, and the order is what makes both a developer checkout and an
@@ -36,7 +24,10 @@ pub use state::{AppError, AppState, Mode};
 ///
 /// 1. `--data-dir <path>`, which wins outright.
 /// 2. `./data`, **if it already exists**. A checkout has one, so `cargo run` from the
-///    repository uses the store you indexed there.
+///    repository, or a cron job started there, uses the store you indexed there. It has
+///    to be "if it exists": launched from a desktop icon the working directory is
+///    wherever the icon points, and a bare relative path found an empty store and
+///    reported no launches.
 /// 3. `<exe dir>/data`, **if it already exists**. This was the fallback before there was
 ///    a per-OS one, so an existing portable install keeps its store instead of silently
 ///    starting empty beside it.
