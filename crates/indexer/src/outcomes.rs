@@ -32,9 +32,9 @@
 use std::collections::HashSet;
 
 use alloy_primitives::{Address, B256, U256};
-use quarrel_core::curve::{CurveState, LaunchConfig, quote_buy};
-use quarrel_store::history::TradeRow;
-use quarrel_store::types::{EntryRule, Side, multiple_bps, price_of};
+use banana_core::curve::{CurveState, LaunchConfig, quote_buy};
+use banana_store::history::TradeRow;
+use banana_store::types::{EntryRule, Side, multiple_bps, price_of};
 
 /// How long the opening tax lasts, in blocks.
 ///
@@ -324,7 +324,7 @@ fn find_entry(input: &OutcomeInput<'_>) -> Option<(EntryRule, u64, U256, U256)> 
 }
 
 /// Advance a replayed curve by one observed trade.
-pub fn apply(state: &mut CurveState, t: &TradeRow) -> Result<(), quarrel_core::curve::CurveError> {
+pub fn apply(state: &mut CurveState, t: &TradeRow) -> Result<(), banana_core::curve::CurveError> {
     match t.side {
         // `t.fee` already contains the snipe tax, so it is not deducted again -- see
         // CurveState::apply_buy. `t.snipe_tax` is kept for the entry rule, where its
@@ -431,7 +431,7 @@ mod tests {
             let snipe = quote_in * U256::from(snipe_bps) / U256::from(10_000u64);
             let fee = curve_fee + snipe;
             let net = quote_in - fee;
-            let tokens_out = quarrel_core::curve::amount_out(
+            let tokens_out = banana_core::curve::amount_out(
                 net,
                 self.state.quote_reserve,
                 self.state.token_reserve,
@@ -696,7 +696,7 @@ mod tests {
         let entry = o.entry_price.unwrap();
         assert_eq!(
             o.mult_after_5m_bps,
-            quarrel_store::types::multiple_bps(inside, entry),
+            banana_store::types::multiple_bps(inside, entry),
             "the last trade before the horizon, not the much later one"
         );
         assert!(

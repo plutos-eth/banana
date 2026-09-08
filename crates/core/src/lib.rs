@@ -1,4 +1,4 @@
-//! `quarrel-core` — domain types, curve math and the rule engine.
+//! `banana-core` — domain types, curve math and the rule engine.
 //!
 //! **Zero I/O.** No network, no filesystem, no database. Everything here is a pure
 //! function of its arguments so both halves of the product — the live sniper and the

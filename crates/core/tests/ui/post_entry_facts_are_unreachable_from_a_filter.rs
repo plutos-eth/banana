@@ -8,8 +8,8 @@
 //! The guarantee is structural rather than documented: `evaluate` accepts `&PitFeatures`
 //! and there is no other way in. This file must FAIL to compile. If it ever starts
 //! compiling, the boundary has been widened and the guarantee is gone.
-use quarrel_core::features::PostEntryFacts;
-use quarrel_core::filter::{Condition, EntryFilter};
+use banana_core::features::PostEntryFacts;
+use banana_core::filter::{Condition, EntryFilter};
 
 fn main() {
     let future = PostEntryFacts {

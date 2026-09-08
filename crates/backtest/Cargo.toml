@@ -1,13 +1,13 @@
 [package]
-name = "quarrel-backtest"
+name = "banana-backtest"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-quarrel-core = { workspace = true }
-quarrel-store = { workspace = true }
+banana-core = { workspace = true }
+banana-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -17,4 +17,4 @@ alloy-primitives = { workspace = true }
 [dev-dependencies]
 # The point-in-time regression drives the real feature builder rather than a copy of it:
 # a test that reimplements the thing it is testing proves nothing.
-quarrel-indexer = { workspace = true }
+banana-indexer = { workspace = true }

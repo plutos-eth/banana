@@ -1,4 +1,4 @@
-//! `quarrel-store` — SQLite persistence.
+//! `banana-store` — SQLite persistence.
 //!
 //! Two databases in one `data/` directory (spec §4.1):
 //!
@@ -8,7 +8,7 @@
 //! Locking is **per database file, not per directory** (PLAN.md C3). The two have disjoint
 //! writers by design: the indexer writes history, the engine writes live. The CLI takes
 //! the `history.db` writer lock; the app takes `live.db`'s and opens `history.db`
-//! read-only when it does not hold that lock. This is what lets `quarrel index` run from
+//! read-only when it does not hold that lock. This is what lets `banana index` run from
 //! cron while the desktop app is open and trading, which spec §10 requires and a
 //! directory-wide lock would have made impossible.
 //!

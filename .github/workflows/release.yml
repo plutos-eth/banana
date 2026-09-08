@@ -87,7 +87,7 @@ jobs:
           # a private key.
           releaseDraft: true
           tagName: ${{ github.ref_name }}
-          releaseName: quarrel ${{ github.ref_name }}
+          releaseName: banana ${{ github.ref_name }}
           releaseBody: |
             Builds are **unsigned**. Your operating system will warn you; the README says
             how to get past it on each platform, and why it is unsigned.

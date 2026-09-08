@@ -1,4 +1,4 @@
-//! `quarrel-indexer` — resumable backfill and incremental update.
+//! `banana-indexer` — resumable backfill and incremental update.
 //!
 //! Four weighted phases (PLAN.md D4), all running at the RPC gate's `Bulk` priority so a
 //! background index can never add latency to a live entry:

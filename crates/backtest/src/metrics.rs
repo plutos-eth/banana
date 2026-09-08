@@ -15,7 +15,7 @@
 //! launches never trade above entry (`docs/FINDINGS.md` §9). That is the distribution these
 //! numbers describe, and it is why the framing is not decoration.
 
-use quarrel_core::Bps;
+use banana_core::Bps;
 use serde::{Deserialize, Serialize};
 
 /// Spec §5.5: below this many passing tokens, no percentage is reported at all.

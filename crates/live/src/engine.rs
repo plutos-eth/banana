@@ -32,14 +32,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use alloy_primitives::{Address, U256};
-use quarrel_chain::abi::Phase;
-use quarrel_chain::gate::Priority;
-use quarrel_chain::rpc::Client;
-use quarrel_core::features::Pair;
-use quarrel_core::strategy::StrategyConfig;
-use quarrel_core::{BPS, Bps, curve};
-use quarrel_store::types::Side;
-use quarrel_store::{History, Journal, journal};
+use banana_chain::abi::Phase;
+use banana_chain::gate::Priority;
+use banana_chain::rpc::Client;
+use banana_core::features::Pair;
+use banana_core::strategy::StrategyConfig;
+use banana_core::{BPS, Bps, curve};
+use banana_store::types::Side;
+use banana_store::{History, Journal, journal};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
@@ -535,7 +535,7 @@ impl Engine {
         // --- what this session is able to answer honestly ------------------------------
         let depth = self.seen.coverage().depth_at(launch.block);
         if self.strategy.entry_filter.uses_deployer_history()
-            && depth < quarrel_backtest_depth_floor()
+            && depth < banana_backtest_depth_floor()
         {
             self.refuse(
                 &launch,
@@ -546,7 +546,7 @@ impl Engine {
                      deployer history are continuous here against the {} the Lab requires. \
                      Passing on a count we know is short would be the flattering direction",
                     depth,
-                    quarrel_backtest_depth_floor()
+                    banana_backtest_depth_floor()
                 ),
             )
             .await;
@@ -1000,7 +1000,7 @@ impl Engine {
     }
 
     fn recipient(&self) -> Address {
-        self.config.wallet.unwrap_or(quarrel_chain::addr::DEAD)
+        self.config.wallet.unwrap_or(banana_chain::addr::DEAD)
     }
 
     /// The balance the guards check against.
@@ -1063,9 +1063,9 @@ impl Engine {
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
     #[error(transparent)]
-    Rpc(#[from] quarrel_chain::gate::RpcError),
+    Rpc(#[from] banana_chain::gate::RpcError),
     #[error(transparent)]
-    Store(#[from] quarrel_store::StoreError),
+    Store(#[from] banana_store::StoreError),
 }
 
 /// Poll the curve's own `currentSnipeTaxBps` until it is low enough to buy at.
@@ -1087,8 +1087,8 @@ async fn wait_for_decay(
         let tax_bps = match client
             .call(
                 curve,
-                &quarrel_chain::abi::IPonsCurve::currentSnipeTaxBpsCall {
-                    recipient: quarrel_chain::addr::DEAD,
+                &banana_chain::abi::IPonsCurve::currentSnipeTaxBpsCall {
+                    recipient: banana_chain::addr::DEAD,
                 },
                 Priority::Hot,
             )
@@ -1112,10 +1112,10 @@ async fn wait_for_decay(
 /// The Lab's deployer-depth floor, so the sniper applies the same restriction the backtest
 /// did.
 ///
-/// Duplicated as a constant rather than depending on `quarrel-backtest`: the sniper must
+/// Duplicated as a constant rather than depending on `banana-backtest`: the sniper must
 /// not pull in the Lab, and 12 hours in blocks is a number, not a behaviour.
-fn quarrel_backtest_depth_floor() -> u64 {
-    12 * 3_600 * 1_000 / quarrel_chain::addr::BLOCK_MS
+fn banana_backtest_depth_floor() -> u64 {
+    12 * 3_600 * 1_000 / banana_chain::addr::BLOCK_MS
 }
 
 fn guard_rule(r: &Refused) -> &'static str {
@@ -1147,7 +1147,7 @@ fn now() -> u64 {
 mod tests {
     use super::*;
     use alloy_primitives::B256;
-    use quarrel_core::strategy::ExitPolicy;
+    use banana_core::strategy::ExitPolicy;
 
     fn held(cost: u64, bought: u64, held_tokens: u64, sold_bps: u32) -> Held {
         Held {
@@ -1198,8 +1198,8 @@ mod tests {
     #[test]
     fn the_depth_floor_matches_the_labs() {
         assert_eq!(
-            quarrel_backtest_depth_floor(),
-            quarrel_backtest::run::deployer_depth_blocks()
+            banana_backtest_depth_floor(),
+            banana_backtest::run::deployer_depth_blocks()
         );
     }
 
@@ -1258,10 +1258,10 @@ mod tests {
             name: String::new(),
             symbol: "  ".into(),
             description: String::new(),
-            socials: quarrel_core::features::Socials::UNKNOWN,
+            socials: banana_core::features::Socials::UNKNOWN,
             exempt_wallets: None,
             creator_tax_bps: None,
-            fee_recipient: quarrel_core::features::FeeRecipient::Unknown,
+            fee_recipient: banana_core::features::FeeRecipient::Unknown,
             dev_buy_bps: None,
             dev_buy_quote: None,
             pair: Pair::Eth,

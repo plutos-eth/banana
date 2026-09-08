@@ -7,11 +7,11 @@
 //! differently. So it gets its own test file, and the test is deliberately literal: write
 //! the bytes, load them into both halves, and check the halves see the same thing.
 
-use quarrel_core::features::{FeeRecipient, Pair, PitFeatures, Presence, Socials};
-use quarrel_core::filter::{Condition, EntryFilter};
-use quarrel_core::strategy::{PartialExit, StrategyConfig, SuccessTarget};
-use quarrel_live::exits::{Mark, decide};
-use quarrel_live::{Budget, Session};
+use banana_core::features::{FeeRecipient, Pair, PitFeatures, Presence, Socials};
+use banana_core::filter::{Condition, EntryFilter};
+use banana_core::strategy::{PartialExit, StrategyConfig, SuccessTarget};
+use banana_live::exits::{Mark, decide};
+use banana_live::{Budget, Session};
 
 /// A strategy a user might actually save, exercising every field both halves read.
 fn saved_strategy() -> StrategyConfig {
@@ -113,7 +113,7 @@ fn the_sniper_reads_its_guards_and_exits_from_the_file_the_lab_ignored() {
 
     // The partial the user wrote is the partial the exit rules apply.
     let e = decide(&loaded.exits, Mark::new(15_000, 10));
-    let quarrel_live::Exit::Sell { sell_bps, rule, .. } = e else {
+    let banana_live::Exit::Sell { sell_bps, rule, .. } = e else {
         panic!("the 1.50x partial should have fired");
     };
     assert_eq!(rule, "partial");
@@ -126,7 +126,7 @@ fn there_is_no_second_config_type_to_translate_into() {
     // `Session` and `Budget` are built from `LiveGuards` itself, not from a live-only
     // mirror of it, and that the type is the one `core` defines.
     let guards = saved_strategy().live_guards;
-    let from_core: quarrel_core::strategy::LiveGuards = guards.clone();
+    let from_core: banana_core::strategy::LiveGuards = guards.clone();
     let budget = Budget::new(from_core);
     assert_eq!(
         budget.limits().session_budget_wei,
@@ -137,7 +137,7 @@ fn there_is_no_second_config_type_to_translate_into() {
 #[test]
 fn a_strategy_saved_by_the_app_is_the_one_the_sniper_would_arm_with() {
     // End to end through a real file, because "the same bytes" is the claim.
-    let dir = std::env::temp_dir().join("quarrel-one-config");
+    let dir = std::env::temp_dir().join("banana-one-config");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("strategy.json");

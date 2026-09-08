@@ -33,8 +33,8 @@ pub const SCHEMA_VERSION: i64 = 1;
 /// One run of the sniper.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewSession {
-    /// `"test"` or `"live"`. A string rather than the enum, because `quarrel-store` must
-    /// not depend on `quarrel-live` — that is the direction the trust boundary forbids.
+    /// `"test"` or `"live"`. A string rather than the enum, because `banana-store` must
+    /// not depend on `banana-live` — that is the direction the trust boundary forbids.
     pub mode: String,
     pub wallet: Address,
     pub started_at: u64,
@@ -127,9 +127,9 @@ impl Position {
         }
         let bps = self
             .tokens_held
-            .saturating_mul(U256::from(quarrel_core::BPS))
+            .saturating_mul(U256::from(banana_core::BPS))
             / self.tokens_bought;
-        bps.try_into().unwrap_or(quarrel_core::BPS)
+        bps.try_into().unwrap_or(banana_core::BPS)
     }
 
     pub fn is_open(&self) -> bool {
@@ -257,7 +257,7 @@ impl Journal {
                 p.launch_block as i64,
                 u256_to_blob(U256::ZERO).as_slice(),
                 u256_to_blob(U256::ZERO).as_slice(),
-                quarrel_core::BPS as i64,
+                banana_core::BPS as i64,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -862,7 +862,7 @@ mod tests {
 
     #[test]
     fn a_journal_reopens_with_its_rows_intact() {
-        let dir = std::env::temp_dir().join(format!("quarrel-journal-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("banana-journal-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("live.db");
         {

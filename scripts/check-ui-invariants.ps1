@@ -10,7 +10,7 @@
 
     2. THE CONTENT SECURITY POLICY STAYS STRICT (spec sec.3.1, PLAN.md C1).
        The launch calldata contains an attacker-controlled logo URL. If the webview can
-       fetch it, a token deployer learns the IP of every quarrel user watching their
+       fetch it, a token deployer learns the IP of every banana user watching their
        launch, in real time, before they buy. The CSP makes that impossible rather than
        merely tested-against: img-src allows only 'self' and data:, and connect-src
        allows no external host at all -- every RPC call goes through the Rust backend

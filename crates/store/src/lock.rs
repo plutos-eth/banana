@@ -10,7 +10,7 @@
 //!
 //! * two indexers still cannot collide,
 //! * two engines still cannot collide,
-//! * `quarrel index` from cron runs happily while the app is open and trading,
+//! * `banana index` from cron runs happily while the app is open and trading,
 //! * the app reads `history.db` through WAL the whole time it is being written.
 //!
 //! The lock is advisory and held for the lifetime of the guard. A process that dies
@@ -23,7 +23,7 @@ use fs4::fs_std::FileExt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LockError {
-    #[error("{db} is being written by another quarrel process ({path})")]
+    #[error("{db} is being written by another banana process ({path})")]
     Busy { db: String, path: String },
     #[error("cannot open lock file {path}: {source}")]
     Io {
@@ -116,7 +116,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("quarrel-lock-{}-{}", std::process::id(), name));
+        let d = std::env::temp_dir().join(format!("banana-lock-{}-{}", std::process::id(), name));
         std::fs::create_dir_all(&d).unwrap();
         d.join("history.db")
     }
@@ -127,7 +127,7 @@ mod tests {
         let first = Lock::acquire(&db).expect("first writer");
         let err = Lock::acquire(&db).expect_err("second writer must be refused");
         assert!(matches!(err, LockError::Busy { .. }), "{err}");
-        assert!(err.to_string().contains("another quarrel process"));
+        assert!(err.to_string().contains("another banana process"));
         drop(first);
         let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn acquiring_creates_the_data_directory_if_it_is_missing() {
-        let dir = std::env::temp_dir().join(format!("quarrel-lock-new-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("banana-lock-new-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let db = dir.join("history.db");
         let g = Lock::acquire(&db).expect("should create the directory");

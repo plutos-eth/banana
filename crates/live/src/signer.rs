@@ -96,7 +96,7 @@ pub trait Signer: Send + Sync + std::fmt::Debug {
 /// A key held in memory for the life of a session.
 ///
 /// Constructed only where a live session starts. Nothing else in the workspace calls this,
-/// and nothing else *can*: no other crate depends on `quarrel-live`.
+/// and nothing else *can*: no other crate depends on `banana-live`.
 #[derive(Debug)]
 pub struct KeySigner {
     inner: PrivateKeySigner,
@@ -399,7 +399,7 @@ mod tests {
     // --- the settings keystore ------------------------------------------------------
 
     fn key_dir(name: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("quarrel-key-{name}"));
+        let d = std::env::temp_dir().join(format!("banana-key-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d

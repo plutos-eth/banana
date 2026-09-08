@@ -16,8 +16,8 @@
 //! it is the reference the trailing stop measures down from, which is the one legitimate
 //! use for it.
 
-use quarrel_core::BPS;
-use quarrel_core::strategy::ExitPolicy;
+use banana_core::BPS;
+use banana_core::strategy::ExitPolicy;
 use serde::{Deserialize, Serialize};
 
 /// What a position looks like to the exit rules.
@@ -214,7 +214,7 @@ fn pct(bps: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quarrel_core::strategy::PartialExit;
+    use banana_core::strategy::PartialExit;
 
     /// Nothing set, so nothing can fire. Each test switches on the rule it is about.
     fn none() -> ExitPolicy {

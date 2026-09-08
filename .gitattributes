@@ -1,0 +1,29 @@
+# Line endings are LF in the repository and LF in the working tree, on every platform.
+#
+# Without this, Git for Windows checks out CRLF by default, and `rustfmt.toml` pins
+# `newline_style = "Unix"` — so `cargo fmt --check` passed on the machine the files were
+# written on and failed on a Windows CI runner that had converted them. The check was
+# right and the repository was ambiguous.
+#
+# `eol=lf` rather than `text=auto`: auto guesses per file, and a guess is what produced
+# the disagreement in the first place.
+* text=auto eol=lf
+
+# Binaries must never be touched. An icon with its newlines "normalised" is a corrupt icon.
+*.png binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.db binary
+*.bundle binary
+
+# Recorded RPC responses and ABI calldata are compared byte for byte by tests.
+*.hex -text
+crates/chain/tests/fixtures/** -text
+
+# Generated; keep them out of diffs and out of language statistics.
+Cargo.lock linguist-generated=true
+ui/package-lock.json linguist-generated=true

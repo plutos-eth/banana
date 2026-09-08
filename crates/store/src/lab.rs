@@ -13,7 +13,7 @@
 //! denominator for a reason that is about our decoder rather than about the token.
 
 use alloy_primitives::{Address, B256};
-use quarrel_core::features::{FeeRecipient, Pair, PitFeatures, Socials};
+use banana_core::features::{FeeRecipient, Pair, PitFeatures, Socials};
 use rusqlite::types::Value;
 
 use crate::history::History;
@@ -411,9 +411,9 @@ mod tests {
                 website_url: None,
                 telegram_url: None,
                 socials: Socials {
-                    twitter: quarrel_core::features::Presence::Present,
-                    website: quarrel_core::features::Presence::Absent,
-                    telegram: quarrel_core::features::Presence::Absent,
+                    twitter: banana_core::features::Presence::Present,
+                    website: banana_core::features::Presence::Absent,
+                    telegram: banana_core::features::Presence::Absent,
                 },
                 exempt_wallets: Some(1),
                 creator_fee_recipient: Some(addr(3)),

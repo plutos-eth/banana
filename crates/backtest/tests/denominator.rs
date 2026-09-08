@@ -12,8 +12,8 @@
 
 mod support;
 
-use quarrel_core::filter::EntryFilter;
-use quarrel_core::strategy::{StrategyConfig, SuccessTarget};
+use banana_core::filter::EntryFilter;
+use banana_core::strategy::{StrategyConfig, SuccessTarget};
 use support::{Fixture, Launch};
 
 const TO_BLOCK: u64 = 1_000_000;
@@ -30,7 +30,7 @@ fn permissive() -> StrategyConfig {
 }
 
 /// `winners` tokens that doubled, `losers` that went nowhere. All matured, all passing.
-fn universe(winners: u64, losers: u64) -> quarrel_store::History {
+fn universe(winners: u64, losers: u64) -> banana_store::History {
     let mut f = Fixture::new(0, TO_BLOCK);
     for i in 0..winners {
         f.add(Launch::at(1_000 + i).winner());
@@ -50,7 +50,7 @@ fn universe(winners: u64, losers: u64) -> quarrel_store::History {
 #[test]
 fn the_hit_rate_is_over_everything_that_matured_not_over_what_survived() {
     let h = universe(10, 90);
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
     let m = r.results.measured().expect("100 tokens is a sample");
 
     assert_eq!(m.hits, 10);
@@ -79,7 +79,7 @@ fn a_token_with_no_post_entry_trades_is_still_counted() {
         });
     }
     let h = f.finish();
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
     let m = r.results.measured().unwrap();
 
     assert_eq!(m.measured_over, 40);
@@ -94,7 +94,7 @@ fn a_token_with_no_post_entry_trades_is_still_counted() {
 #[test]
 fn every_launch_is_accounted_for_between_the_universe_and_the_result() {
     let h = universe(10, 90);
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     let universe_size = r.funnel.stage("all_launches").unwrap().remaining;
     let measured = r.results.measured().unwrap().measured_over;
@@ -130,7 +130,7 @@ fn a_launch_that_could_not_be_priced_leaves_the_funnel_where_a_reader_can_see_it
         });
     }
     let h = f.finish();
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     assert_eq!(r.funnel.stage("passed_filter").unwrap().remaining, 35);
     let priced = r.funnel.stage("priced").unwrap();
@@ -159,7 +159,7 @@ fn migrations_are_reported_as_a_raw_count() {
         success_target: SuccessTarget::ReachedMigration,
         ..permissive()
     };
-    let r = quarrel_backtest::run(&h, &cfg).unwrap();
+    let r = banana_backtest::run(&h, &cfg).unwrap();
     let m = r.results.measured().unwrap();
 
     assert_eq!(m.migrations, 1);

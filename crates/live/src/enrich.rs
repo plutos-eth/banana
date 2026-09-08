@@ -36,14 +36,14 @@ use std::time::Duration;
 
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::{SolCall, SolEvent};
-use quarrel_chain::abi::{IPonsCurve, IPonsFactory, IPonsToken, Phase};
-use quarrel_chain::addr;
-use quarrel_chain::gate::{Priority, RpcError};
-use quarrel_chain::launch_tx::{self, LaunchMeta, sanitise_for_display};
-use quarrel_chain::rpc::{CallResult, Client, Receipt};
-use quarrel_core::features::{FeeRecipient, Fingerprint, Pair, PitFeatures, Socials};
-use quarrel_core::{BPS, Bps};
-use quarrel_store::DeployerSeen;
+use banana_chain::abi::{IPonsCurve, IPonsFactory, IPonsToken, Phase};
+use banana_chain::addr;
+use banana_chain::gate::{Priority, RpcError};
+use banana_chain::launch_tx::{self, LaunchMeta, sanitise_for_display};
+use banana_chain::rpc::{CallResult, Client, Receipt};
+use banana_core::features::{FeeRecipient, Fingerprint, Pair, PitFeatures, Socials};
+use banana_core::{BPS, Bps};
+use banana_store::DeployerSeen;
 
 use crate::watch::Launch;
 
@@ -89,12 +89,12 @@ pub struct ChainState {
 }
 
 impl ChainState {
-    /// The pricing state, in the form `quarrel_core::curve` takes.
+    /// The pricing state, in the form `banana_core::curve` takes.
     ///
     /// The same struct the backtest replays with, so a live quote and a replayed one go
     /// through identical arithmetic.
-    pub fn curve_state(&self) -> quarrel_core::curve::CurveState {
-        quarrel_core::curve::CurveState {
+    pub fn curve_state(&self) -> banana_core::curve::CurveState {
+        banana_core::curve::CurveState {
             quote_reserve: self.quote_reserve,
             token_reserve: self.token_reserve,
             real_quote_reserve: self.real_quote_reserve,
@@ -179,7 +179,7 @@ pub struct Reading {
 impl Reading {
     /// The launch-farm signature, from calldata only.
     ///
-    /// Built with `quarrel_core`'s constructor, the same one the indexer uses, so a live
+    /// Built with `banana_core`'s constructor, the same one the indexer uses, so a live
     /// fingerprint and an indexed one for the same launch are the same string.
     pub fn fingerprint(&self) -> Fingerprint {
         Fingerprint::new(
@@ -638,8 +638,8 @@ pub fn worth_enriching(launch: &Launch, decay_ms: u64, stale_grace_ms: u64) -> b
 mod tests {
     use super::*;
     use alloy_primitives::{B256, Bytes, hex};
-    use quarrel_chain::rpc::RawLog;
-    use quarrel_core::features::Presence;
+    use banana_chain::rpc::RawLog;
+    use banana_core::features::Presence;
 
     fn launch(block: u64, tx: u8, log_index: u64) -> Launch {
         Launch {

@@ -1,14 +1,14 @@
 [package]
-name = "quarrel-indexer"
+name = "banana-indexer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-quarrel-core = { workspace = true }
-quarrel-chain = { workspace = true }
-quarrel-store = { workspace = true }
+banana-core = { workspace = true }
+banana-chain = { workspace = true }
+banana-store = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

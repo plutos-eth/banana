@@ -8,12 +8,12 @@
 use std::collections::HashSet;
 
 use alloy_primitives::{Address, U256};
-use quarrel_chain::gate::Priority;
-use quarrel_chain::rpc::Client;
-use quarrel_core::curve::LaunchConfig;
-use quarrel_core::features::Socials;
-use quarrel_store::history::{History, OutcomeRow, PitFeaturesRow};
-use quarrel_store::types::EntryRule;
+use banana_chain::gate::Priority;
+use banana_chain::rpc::Client;
+use banana_core::curve::LaunchConfig;
+use banana_core::features::Socials;
+use banana_store::history::{History, OutcomeRow, PitFeaturesRow};
+use banana_store::types::EntryRule;
 
 use crate::features::{FeatureBuilder, Fingerprint, LaunchFacts};
 use crate::outcomes::{self, OutcomeInput};
@@ -85,10 +85,10 @@ pub async fn run(
 
     // The launch config is read once per id, not once per launch.
     if history.get_launch_config(0)?.is_none() {
-        use quarrel_chain::abi::IPonsFactory;
+        use banana_chain::abi::IPonsFactory;
         match client
             .call(
-                quarrel_chain::addr::PONS_FACTORY,
+                banana_chain::addr::PONS_FACTORY,
                 &IPonsFactory::getLaunchConfigCall { id: U256::ZERO },
                 Priority::Bulk,
             )
@@ -305,7 +305,7 @@ mod tests {
         let p = IndexPlan::last_24h(1_000_000);
         assert_eq!(
             p.reference_size,
-            quarrel_core::strategy::EntryModel::default().size_wei
+            banana_core::strategy::EntryModel::default().size_wei
         );
     }
 }

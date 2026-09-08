@@ -40,7 +40,7 @@ export function ChooseMode() {
 
   return (
     <div className="chooser">
-      <h1 className="chooser__title">quarrel</h1>
+      <h1 className="chooser__title">banana</h1>
       <p className="chooser__note">
         How should this session run? The choice holds until you restart.
       </p>

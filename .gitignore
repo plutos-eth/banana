@@ -1,6 +1,11 @@
 # reference implementation, cloned for study, not part of the build
 scratch/
 
+# brand art at full resolution. `docs/media/` carries the optimised copies the README
+# actually loads; these are the sources, and three megabytes of them is not something a
+# clone should have to pull.
+readme_renders/
+
 # the design log, the original specification, the measurement notes and the design render.
 # Kept on disk because the source comments cite them; not published (README says so).
 private/

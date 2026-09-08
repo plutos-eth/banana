@@ -6,14 +6,14 @@
 
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::SolEvent;
-use quarrel_chain::abi::{IPonsCurve, IPonsFactory};
-use quarrel_chain::gate::{Priority, RpcError};
-use quarrel_chain::rpc::{Client, LogFilter, RawLog};
-use quarrel_chain::{addr, launch_tx};
-use quarrel_store::history::{
+use banana_chain::abi::{IPonsCurve, IPonsFactory};
+use banana_chain::gate::{Priority, RpcError};
+use banana_chain::rpc::{Client, LogFilter, RawLog};
+use banana_chain::{addr, launch_tx};
+use banana_store::history::{
     EnrichmentRow, History, LaunchRow, PendingCalldata, PhaseState, TradeRow,
 };
-use quarrel_store::types::Side;
+use banana_store::types::Side;
 
 use crate::chunking::{Chunker, ChunkerConfig, Range};
 use crate::progress::{Phase, Progress};
@@ -23,7 +23,7 @@ pub enum ScanError {
     #[error(transparent)]
     Rpc(#[from] RpcError),
     #[error(transparent)]
-    Store(#[from] quarrel_store::StoreError),
+    Store(#[from] banana_store::StoreError),
     #[error(
         "block {block} matches more than the endpoint will return even alone; the range cannot be split further"
     )]
@@ -178,11 +178,11 @@ fn topic_address(l: &RawLog, i: usize) -> Option<Address> {
 
 /// Adapt the shared decoder to the store's row type.
 ///
-/// The decoding itself lives in `quarrel_chain::launch_log` because the sniper reads the
+/// The decoding itself lives in `banana_chain::launch_log` because the sniper reads the
 /// same event, and one event decoded two ways is a bug waiting for whichever half is
 /// exercised less.
 fn decode_launch_log(l: &RawLog) -> Option<LaunchRow> {
-    let d = quarrel_chain::launch_log::decode(l)?;
+    let d = banana_chain::launch_log::decode(l)?;
     Some(LaunchRow {
         token: d.token,
         curve: d.curve,
@@ -313,7 +313,7 @@ pub async fn scan_calldata(
     progress.begin(Phase::Calldata, pending.len() as u64);
 
     let mut written = 0u64;
-    let supply = quarrel_core::curve::LaunchConfig::live_id_0().supply;
+    let supply = banana_core::curve::LaunchConfig::live_id_0().supply;
 
     for batch in pending.chunks(concurrency.max(1)) {
         // Real concurrency, not a sequential loop: this phase is ~20,000 requests and its
@@ -374,7 +374,7 @@ fn unknown_enrichment(token: Address, why: &str) -> EnrichmentRow {
         twitter_url: None,
         website_url: None,
         telegram_url: None,
-        socials: quarrel_core::features::Socials::UNKNOWN,
+        socials: banana_core::features::Socials::UNKNOWN,
         exempt_wallets: None,
         creator_fee_recipient: None,
         creator_tax_bps: None,
@@ -391,7 +391,7 @@ fn build_enrichment(
     input: &[u8],
     supply: U256,
 ) -> Result<EnrichmentRow> {
-    use quarrel_chain::launch_tx::{LaunchMeta, sanitise_for_display};
+    use banana_chain::launch_tx::{LaunchMeta, sanitise_for_display};
 
     let PendingCalldata {
         token,
@@ -419,7 +419,7 @@ fn build_enrichment(
         if supply.is_zero() {
             None
         } else {
-            (tk * U256::from(quarrel_core::BPS)).checked_div(supply)
+            (tk * U256::from(banana_core::BPS)).checked_div(supply)
         }
         .and_then(|v| v.try_into().ok())
     });
@@ -478,7 +478,7 @@ fn build_enrichment(
 ///
 /// Cheap: one call per distinct pair token (42 in a 20,000-block window), not per launch.
 pub async fn scan_pair_economics(client: &Client, history: &mut History) -> Result<u64> {
-    use quarrel_chain::abi::IPonsFactory;
+    use banana_chain::abi::IPonsFactory;
     let pending = history.pair_tokens_needing_economics()?;
     let mut n = 0;
     for pair in pending {

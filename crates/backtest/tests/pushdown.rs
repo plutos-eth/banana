@@ -17,10 +17,10 @@
 
 mod support;
 
-use quarrel_core::features::{FeeRecipient, Pair, Presence};
-use quarrel_core::filter::{Condition, EntryFilter};
-use quarrel_core::pattern::Pattern;
-use quarrel_store::History;
+use banana_core::features::{FeeRecipient, Pair, Presence};
+use banana_core::filter::{Condition, EntryFilter};
+use banana_core::pattern::Pattern;
+use banana_store::History;
 use support::{Fixture, Launch};
 
 /// 100 trees, as the acceptance criterion asks for.
@@ -171,7 +171,7 @@ fn check(history: &History, label: &str) -> (u64, u64) {
 
     for i in 0..TREES {
         let t = tree(&mut rng, 3);
-        let sql = quarrel_store::push_down(&t);
+        let sql = banana_store::push_down(&t);
         let rows = history.candidates(Some(&sql)).unwrap();
         let returned_tokens: std::collections::HashSet<_> = rows
             .iter()
@@ -247,7 +247,7 @@ fn the_same_property_holds_over_the_indexed_window() {
     // already snapshotted, so the two queries would see different databases and the
     // failure would be a race rather than a property. The writer lock already says whether
     // that is happening.
-    if !quarrel_store::Lock::is_free(path) {
+    if !banana_store::Lock::is_free(path) {
         println!("an index holds the writer lock; skipping the real-store check");
         return;
     }

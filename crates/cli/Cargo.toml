@@ -1,16 +1,16 @@
 [package]
-name = "quarrel-cli"
+name = "banana-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-quarrel-core = { workspace = true }
-quarrel-chain = { workspace = true }
-quarrel-store = { workspace = true }
-quarrel-indexer = { workspace = true }
-quarrel-backtest = { workspace = true }
+banana-core = { workspace = true }
+banana-chain = { workspace = true }
+banana-store = { workspace = true }
+banana-indexer = { workspace = true }
+banana-backtest = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
@@ -20,5 +20,5 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [[bin]]
-name = "quarrel"
+name = "banana"
 path = "src/main.rs"

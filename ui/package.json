@@ -1,9 +1,9 @@
 {
-  "name": "quarrel-ui",
+  "name": "banana-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "quarrel desktop frontend. Talks to the Rust backend over Tauri IPC only; it has no network access of its own (see the CSP in crates/app/tauri.conf.json).",
+  "description": "banana desktop frontend. Talks to the Rust backend over Tauri IPC only; it has no network access of its own (see the CSP in crates/app/tauri.conf.json).",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

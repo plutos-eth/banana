@@ -30,7 +30,7 @@
 use std::time::Duration;
 
 use alloy_primitives::U256;
-use quarrel_core::{BPS, Bps};
+use banana_core::{BPS, Bps};
 use serde::{Deserialize, Serialize};
 
 /// Poll spacing bounds.

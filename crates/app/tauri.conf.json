@@ -1,18 +1,16 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "quarrel",
+  "productName": "banana",
   "version": "0.1.0",
-  "identifier": "dev.quarrel.app",
+  "identifier": "dev.banana.app",
   "build": {
     "frontendDist": "../../ui/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev --prefix ../../ui",
-    "beforeBuildCommand": "npm run build --prefix ../../ui"
+    "devUrl": "http://localhost:5173"
   },
   "app": {
     "windows": [
       {
-        "title": "quarrel",
+        "title": "banana",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -43,7 +41,7 @@
     ],
     "copyright": "MIT licensed. Independent of pons, Uniswap and Robinhood.",
     "shortDescription": "Local sniper terminal and strategy backtester for pons v2.",
-    "longDescription": "quarrel is a local desktop application. It watches pons v2 token launches, evaluates them against a transparent boolean filter, and lets the same filter be backtested against locally indexed on-chain history. Nothing leaves the machine except JSON-RPC to the endpoint the user configured.",
+    "longDescription": "banana is a local desktop application. It watches pons v2 token launches, evaluates them against a transparent boolean filter, and lets the same filter be backtested against locally indexed on-chain history. Nothing leaves the machine except JSON-RPC to the endpoint the user configured.",
     "category": "DeveloperTool",
     "linux": {
       "deb": {

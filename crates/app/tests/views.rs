@@ -2,7 +2,7 @@
 //!
 //! The phase-5 criterion is "every view works against real indexed data", and the way to
 //! test that without a window is to call the same functions the commands call. A store is
-//! built here from the same `quarrel-store` API the indexer writes through, so a schema
+//! built here from the same `banana-store` API the indexer writes through, so a schema
 //! change breaks these rather than letting them drift.
 //!
 //! When `data/lab/history.db` exists the same checks also run against the indexed window,
@@ -12,17 +12,17 @@
 use std::path::{Path, PathBuf};
 
 use alloy_primitives::{Address, B256, U256};
-use quarrel_app::AppState;
-use quarrel_app::api;
-use quarrel_core::features::{Presence, Socials};
-use quarrel_core::filter::{Condition, EntryFilter};
-use quarrel_core::strategy::StrategyConfig;
-use quarrel_store::History;
-use quarrel_store::history::{EnrichmentRow, LaunchRow, OutcomeRow, PhaseState, PitFeaturesRow};
-use quarrel_store::types::EntryRule;
+use banana_app::AppState;
+use banana_app::api;
+use banana_core::features::{Presence, Socials};
+use banana_core::filter::{Condition, EntryFilter};
+use banana_core::strategy::StrategyConfig;
+use banana_store::History;
+use banana_store::history::{EnrichmentRow, LaunchRow, OutcomeRow, PhaseState, PitFeaturesRow};
+use banana_store::types::EntryRule;
 
 fn temp_dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("quarrel-views-{name}"));
+    let d = std::env::temp_dir().join(format!("banana-views-{name}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -158,7 +158,7 @@ fn choosing_test_mode_is_reported_on_every_view() {
     let d = temp_dir("chosen");
     build_store(&d, 3);
     let state = AppState::new(&d);
-    state.choose_mode(quarrel_app::Mode::Test).unwrap();
+    state.choose_mode(banana_app::Mode::Test).unwrap();
 
     let s = api::status(&state);
     assert_eq!(s.mode_label, "TEST", "the indicator is on every view");
@@ -166,7 +166,7 @@ fn choosing_test_mode_is_reported_on_every_view() {
     assert!(s.engine.contains("holds no key"), "{}", s.engine);
 
     // Changing mode mid-session is refused; restarting is how you change it.
-    let e = state.choose_mode(quarrel_app::Mode::Live).unwrap_err();
+    let e = state.choose_mode(banana_app::Mode::Live).unwrap_err();
     assert!(e.to_string().contains("Restart to change mode"), "{e}");
 }
 
@@ -391,7 +391,7 @@ fn every_view_works_against_the_indexed_window() {
         );
         return;
     }
-    if !quarrel_store::Lock::is_free(dir.join("history.db")) {
+    if !banana_store::Lock::is_free(dir.join("history.db")) {
         println!("an index holds the writer lock; skipping");
         return;
     }

@@ -1,7 +1,22 @@
-# quarrel
+<p align="center">
+  <img src="docs/media/banner.jpg" alt="banana" width="100%">
+</p>
 
-A local desktop sniper terminal and strategy backtester for [pons](https://pons.fun) v2 on
-Robinhood Chain (chain id 4663).
+<h1 align="center">banana</h1>
+
+<p align="center">
+  A local desktop sniper terminal and strategy backtester for
+  <a href="https://pons.fun">pons</a> v2 on Robinhood Chain (chain id 4663).
+</p>
+
+<p align="center">
+  <a href="../../releases"><img alt="release" src="https://img.shields.io/github/v/release/plutos-eth/banana?display_name=tag&sort=semver&color=D4FC50&labelColor=14161A"></a>
+  <a href="../../actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/plutos-eth/banana/ci.yml?branch=main&labelColor=14161A"></a>
+  <a href="LICENSE"><img alt="licence" src="https://img.shields.io/badge/licence-MIT-D4FC50?labelColor=14161A"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/windows%20%C2%B7%20macos%20%C2%B7%20linux-14161A">
+</p>
+
+---
 
 Two halves sharing one rule engine:
 
@@ -20,6 +35,8 @@ webview's Content-Security-Policy makes outbound requests impossible rather than
 ---
 
 ## Read this before you run it
+
+<img src="docs/media/mark.jpg" alt="" width="140" align="right">
 
 **This software can lose all of the money you give it.** It is a trading tool for one of the most
 adversarial markets there is. There is no warranty of any kind (see [LICENSE](LICENSE)).
@@ -73,20 +90,20 @@ and you can read exactly what produced the binary you are downloading.
 
 | platform | file |
 |---|---|
-| Windows 10/11 | `quarrel_<version>_x64_en-US.msi` or `quarrel_<version>_x64-setup.exe` |
-| macOS (Apple Silicon) | `quarrel_<version>_aarch64.dmg` |
-| macOS (Intel) | `quarrel_<version>_x64.dmg` |
-| Linux (Debian/Ubuntu) | `quarrel_<version>_amd64.deb` |
-| Linux (anything) | `quarrel_<version>_amd64.AppImage` |
+| Windows 10/11 | `banana_<version>_x64_en-US.msi` or `banana_<version>_x64-setup.exe` |
+| macOS (Apple Silicon) | `banana_<version>_aarch64.dmg` |
+| macOS (Intel) | `banana_<version>_x64.dmg` |
+| Linux (Debian/Ubuntu) | `banana_<version>_amd64.deb` |
+| Linux (anything) | `banana_<version>_amd64.AppImage` |
 
 **The builds are not code-signed.** That is a cost decision, not an oversight, and it means your
 operating system will warn you:
 
 - **Windows** shows "Windows protected your PC". Click *More info* → *Run anyway*.
-- **macOS** refuses to open it: "quarrel is damaged" or "cannot be opened because the developer
+- **macOS** refuses to open it: "banana is damaged" or "cannot be opened because the developer
   cannot be verified". Right-click the app → *Open* → *Open*, or run
-  `xattr -dr com.apple.quarantine /Applications/quarrel.app`.
-- **Linux** needs the AppImage marked executable: `chmod +x quarrel_*.AppImage`.
+  `xattr -dr com.apple.quarantine /Applications/banana.app`.
+- **Linux** needs the AppImage marked executable: `chmod +x banana_*.AppImage`.
 
 Every release publishes `SHA256SUMS.txt`. Verify before you run something that will hold a private
 key:
@@ -95,7 +112,7 @@ key:
 sha256sum -c SHA256SUMS.txt --ignore-missing     # Linux / macOS
 ```
 ```powershell
-Get-FileHash .\quarrel_0.1.0_x64_en-US.msi -Algorithm SHA256   # Windows
+Get-FileHash .\banana_0.1.0_x64_en-US.msi -Algorithm SHA256   # Windows
 ```
 
 ### Or build it yourself
@@ -132,22 +149,29 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 Then:
 
 ```sh
-git clone https://github.com/plutos-eth/quarrel.git
-cd quarrel
+git clone https://github.com/plutos-eth/banana.git
+cd banana
 
 npm --prefix ui ci
 npm --prefix ui run build          # the frontend is compiled into the binary
-cargo build --release -p quarrel-app
+cargo build --release -p banana-app
 ```
 
 The executable lands in `target/release/`. Run it with no arguments — it does not need any.
 
-To produce installers instead of a bare binary:
+To produce installers (`.msi`, `.dmg`, `.deb`, `.AppImage`) instead of a bare binary:
 
 ```sh
 cargo install tauri-cli --version "^2"
-cargo tauri build
+npm --prefix ui run build          # required first: see below
+cargo tauri build --config crates/app/tauri.conf.json
 ```
+
+The frontend build is a separate step on purpose. Tauri can run it for you through
+`beforeBuildCommand`, but that command's working directory differs between a local run and
+a CI runner, which produced a build that worked on one machine and could not find
+`package.json` on the other. An explicit step is one line longer and always means the same
+thing.
 
 ---
 
@@ -170,9 +194,9 @@ searches, `esc` closes a drawer.
 
 | platform | path |
 |---|---|
-| Windows | `%APPDATA%\quarrel` |
-| macOS | `~/Library/Application Support/quarrel` |
-| Linux | `$XDG_DATA_HOME/quarrel`, or `~/.local/share/quarrel` |
+| Windows | `%APPDATA%\banana` |
+| macOS | `~/Library/Application Support/banana` |
+| Linux | `$XDG_DATA_HOME/banana`, or `~/.local/share/banana` |
 
 Override with `--data-dir <path>`. A `data/` directory in the working directory wins over both,
 which is what makes a development checkout use its own store.
@@ -206,10 +230,10 @@ ui/               React frontend, compiled into the binary.
 
 Three invariants are enforced by CI rather than by review, and they are the ones worth knowing:
 
-- **`quarrel-live` is the only crate that may read a private key or sign anything.** Nothing below
+- **`banana-live` is the only crate that may read a private key or sign anything.** Nothing below
   it may depend on it. `scripts/check-trust-boundary.ps1` fails the build otherwise.
 - **The webview cannot reach the network.** A launch's calldata contains an attacker-controlled
-  logo URL; if the webview could fetch it, a deployer would learn the IP of every quarrel user
+  logo URL; if the webview could fetch it, a deployer would learn the IP of every banana user
   watching their launch, in real time, before they buy. The CSP forbids it and
   `scripts/check-ui-invariants.ps1` compares every directive exactly.
 - **No colour, size or font lives outside `ui/src/tokens.css`.** Same script.
@@ -232,9 +256,18 @@ pwsh ./scripts/check-ui-invariants.ps1
 
 ## Independence
 
-quarrel is not affiliated with, endorsed by, or connected to pons, Uniswap, Robinhood, or
-Robinhood Chain. It is an independent client that reads public chain data and submits ordinary
+**banana is not affiliated with, endorsed by, or connected to pons, Uniswap, Robinhood, or
+Robinhood Chain.** It is an independent client that reads public chain data and submits ordinary
 transactions.
+
+The name, the artwork and the Robin Hood theme are a joke about the chain this runs on. They are
+not a claim of any relationship with anyone, and nothing here is licensed from or approved by the
+projects named above.
+
+The tagline on the banner is likewise a joke, and the opposite of what the program does: it
+analyses every launch against rules you write, refuses most of them, and tells you which rule
+refused each one. If you want software that buys anything without asking, this is the wrong
+repository.
 
 ## Licence
 

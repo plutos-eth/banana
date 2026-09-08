@@ -7,7 +7,7 @@
 //!
 //! The tree is `All`/`Any`/`Not` from day one even though the first UI exposes only a flat
 //! AND, because retrofitting it later means rewriting both this evaluator and the SQL
-//! generator in `quarrel-store`.
+//! generator in `banana-store`.
 //!
 //! # The point-in-time boundary
 //!

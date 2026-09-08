@@ -19,7 +19,7 @@
 //! choice and no jargon.
 
 use alloy_primitives::{Address, U256};
-use quarrel_core::strategy::LiveGuards;
+use banana_core::strategy::LiveGuards;
 
 /// What the user is shown before choosing live mode.
 #[derive(Debug, Clone, PartialEq, Eq)]

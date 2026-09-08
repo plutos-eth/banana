@@ -1,13 +1,13 @@
 # Security
 
-quarrel signs transactions with a private key you give it. This page says exactly how that key is
+banana signs transactions with a private key you give it. This page says exactly how that key is
 handled, what the program sends over the network, and what it deliberately refuses to do. Read it
 before LIVE mode, not after.
 
 ## The private key is stored in plaintext
 
 You paste it into Settings. It is written to `wallet.key` in the data directory (see the README for
-where that is on your platform), unencrypted, by exactly one crate — `quarrel-live`, the only crate
+where that is on your platform), unencrypted, by exactly one crate — `banana-live`, the only crate
 in the workspace permitted to see it.
 
 **This is a real trade-off and not the safest option available.** A plaintext key on disk is
@@ -24,7 +24,7 @@ What limits the damage:
 - **The session budget caps total exposure** regardless of signal quality, along with a per-buy cap,
   a per-position cap and a maximum number of open positions. These are types, not `if` statements:
   the executor cannot be called without a permission object that only the guards can create.
-- **Fund the wallet with what you are prepared to lose.** quarrel is not a custody tool. Use a fresh
+- **Fund the wallet with what you are prepared to lose.** banana is not a custody tool. Use a fresh
   wallet, not your main one.
 
 The key never comes back out. Saving one returns the **address** it derives, and that address is all
@@ -34,7 +34,7 @@ cannot be changed or removed while a LIVE session is running.
 `PRIVATE_KEY` in the environment still works as a fallback for scripts. The file wins when both are
 present.
 
-## What quarrel sends over the network
+## What banana sends over the network
 
 JSON-RPC to the endpoints in `RPC_URL`, and nothing else. No telemetry, no vendor server, no price
 API, no crash reporting, no update check, no analytics.
@@ -44,7 +44,7 @@ The frontend has no network access of its own. The webview's Content-Security-Po
 Rust backend. `scripts/check-ui-invariants.ps1` compares each CSP directive **exactly** — not by
 substring — so widening one has to be a deliberate edit to that script, reviewed as such.
 
-### quarrel never fetches a token's logo
+### banana never fetches a token's logo
 
 A launch's calldata contains a logo URL chosen by the token's deployer. Fetching it would tell them
 the IP address of everyone watching their launch, in real time, before those people buy — a sniper
@@ -55,7 +55,7 @@ handed to your system browser, which is your action rather than the program's.
 
 ## The trust boundary
 
-`quarrel-live` is the only crate that may read a private key or produce a signature. Nothing below
+`banana-live` is the only crate that may read a private key or produce a signature. Nothing below
 it may depend on it — not `core`, `chain`, `store`, `indexer`, `backtest`, or the CLI. The literal
 string `PRIVATE_KEY` appears in exactly one crate.
 

@@ -1,7 +1,7 @@
 //! The point-in-time regression: a filter feature must not read a block at or after the
 //! launch it describes (spec §5.3).
 //!
-//! `quarrel-core` already makes the *boundary* structural — `evaluate` takes `PitFeatures`
+//! `banana-core` already makes the *boundary* structural — `evaluate` takes `PitFeatures`
 //! and `PostEntryFacts` is a different type, proven by a compile-fail test. That stops a
 //! rule reaching for the future. It cannot stop a value in `PitFeatures` from having been
 //! computed out of the future in the first place, which is the leak this file is about.
@@ -16,10 +16,10 @@ mod support;
 
 use std::collections::HashMap;
 
-use quarrel_core::filter::{Condition, EntryFilter};
-use quarrel_core::strategy::{StrategyConfig, SuccessTarget};
-use quarrel_indexer::features::{FeatureBuilder, Fingerprint, LaunchFacts};
-use quarrel_store::History;
+use banana_core::filter::{Condition, EntryFilter};
+use banana_core::strategy::{StrategyConfig, SuccessTarget};
+use banana_indexer::features::{FeatureBuilder, Fingerprint, LaunchFacts};
+use banana_store::History;
 use support::{Fixture, Launch, addr_n};
 
 const TO_BLOCK: u64 = 2_000_000;
@@ -39,7 +39,7 @@ fn strategy(filter: EntryFilter) -> StrategyConfig {
 
 /// How many launches passed. The funnel carries this whatever the sample gate decides.
 fn passed(h: &History, filter: EntryFilter) -> u64 {
-    quarrel_backtest::run(h, &strategy(filter))
+    banana_backtest::run(h, &strategy(filter))
         .unwrap()
         .funnel
         .stage("passed_filter")
@@ -62,7 +62,7 @@ fn real_deployer_launches(graduated: HashMap<alloy_primitives::Address, u64>) ->
             fingerprint: Fingerprint::new(
                 None,
                 Some(100),
-                quarrel_core::features::Socials::NONE,
+                banana_core::features::Socials::NONE,
                 Some(0),
             ),
         });

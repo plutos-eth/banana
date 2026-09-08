@@ -67,7 +67,7 @@ pub struct EnrichmentRow {
     pub twitter_url: Option<String>,
     pub website_url: Option<String>,
     pub telegram_url: Option<String>,
-    pub socials: quarrel_core::features::Socials,
+    pub socials: banana_core::features::Socials,
     /// `None` when the launch did not decode: an unknown bundle size, not a zero one.
     pub exempt_wallets: Option<u32>,
     pub creator_fee_recipient: Option<Address>,
@@ -288,7 +288,7 @@ impl History {
     pub fn upsert_launch_config(
         &mut self,
         id: u64,
-        cfg: &quarrel_core::curve::LaunchConfig,
+        cfg: &banana_core::curve::LaunchConfig,
     ) -> Result<()> {
         self.conn.execute(
             "INSERT INTO launch_configs (id, supply, curve_fee_bps, phantom_quote, graduation_threshold)
@@ -309,7 +309,7 @@ impl History {
         Ok(())
     }
 
-    pub fn get_launch_config(&self, id: u64) -> Result<Option<quarrel_core::curve::LaunchConfig>> {
+    pub fn get_launch_config(&self, id: u64) -> Result<Option<banana_core::curve::LaunchConfig>> {
         let row = self
             .conn
             .query_row(
@@ -329,7 +329,7 @@ impl History {
         let Some((supply, fee, phantom, threshold)) = row else {
             return Ok(None);
         };
-        Ok(Some(quarrel_core::curve::LaunchConfig {
+        Ok(Some(banana_core::curve::LaunchConfig {
             supply: blob(&supply, "launch_configs.supply")?,
             curve_fee_bps: fee as u32,
             phantom_quote: blob(&phantom, "launch_configs.phantom_quote")?,
@@ -628,7 +628,7 @@ impl History {
                         twitter_url: r.get(6)?,
                         website_url: r.get(7)?,
                         telegram_url: r.get(8)?,
-                        socials: quarrel_core::features::Socials {
+                        socials: banana_core::features::Socials {
                             twitter: presence_from_i64(r.get(9)?),
                             website: presence_from_i64(r.get(10)?),
                             telegram: presence_from_i64(r.get(11)?),
@@ -696,7 +696,7 @@ impl History {
 
     // --- queries the indexer needs ------------------------------------------------------
     //
-    // These live here rather than in `quarrel-indexer` because spec §4.1 puts every query
+    // These live here rather than in `banana-indexer` because spec §4.1 puts every query
     // behind the store's API: analytics belong in SQL, and a columnar backend must be
     // addable later without touching callers.
 
@@ -1291,7 +1291,7 @@ mod tests {
             twitter_url: None,
             website_url: None,
             telegram_url: None,
-            socials: quarrel_core::features::Socials::NONE,
+            socials: banana_core::features::Socials::NONE,
             exempt_wallets: Some(0),
             creator_fee_recipient: None,
             creator_tax_bps: Some(0),
@@ -1394,7 +1394,7 @@ mod tests {
 
     #[test]
     fn enrichment_round_trips_including_the_unknown_states() {
-        use quarrel_core::features::{Presence, Socials};
+        use banana_core::features::{Presence, Socials};
         let mut h = History::in_memory().unwrap();
         h.insert_launches(&[launch(1, 10)]).unwrap();
 
@@ -1432,7 +1432,7 @@ mod tests {
     #[test]
     fn a_launch_config_round_trips_exactly() {
         let mut h = History::in_memory().unwrap();
-        let cfg = quarrel_core::curve::LaunchConfig::live_id_0();
+        let cfg = banana_core::curve::LaunchConfig::live_id_0();
         h.upsert_launch_config(0, &cfg).unwrap();
         assert_eq!(h.get_launch_config(0).unwrap(), Some(cfg));
         assert_eq!(h.get_launch_config(9).unwrap(), None);

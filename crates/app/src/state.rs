@@ -3,7 +3,7 @@
 //! Two rules shape this file, both from spec §4.1 and §4.2:
 //!
 //! 1. **The store has one writer.** The app opens `history.db` **read-only** and takes the
-//!    writer lock only for as long as it is actually indexing. That is what lets a `quarrel
+//!    writer lock only for as long as it is actually indexing. That is what lets a `banana
 //!    index` run from cron while the desktop app is open (PLAN.md C3), and it means the
 //!    window can be closed mid-index without leaving a lock behind.
 //! 2. **The engine is not the window.** Its state lives here, not in the UI, so closing or
@@ -13,19 +13,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use quarrel_core::strategy::StrategyConfig;
-use quarrel_store::{History, Lock};
+use banana_core::strategy::StrategyConfig;
+use banana_store::{History, Lock};
 
 /// Whether real money can move. Always visible in the UI (spec §3.2, §8 view 6).
 ///
-/// Re-exported from `quarrel-live` rather than defined again here: the mode the UI shows
+/// Re-exported from `banana-live` rather than defined again here: the mode the UI shows
 /// and the mode the executor obeys have to be one type, or they can disagree.
-pub use quarrel_live::Mode;
+pub use banana_live::Mode;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error(transparent)]
-    Store(#[from] quarrel_store::StoreError),
+    Store(#[from] banana_store::StoreError),
     #[error("sqlite: {0}")]
     Sqlite(#[from] rusqlite::Error),
     #[error("io: {0}")]
@@ -33,7 +33,7 @@ pub enum AppError {
     #[error("{0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    Backtest(#[from] quarrel_backtest::BacktestError),
+    Backtest(#[from] banana_backtest::BacktestError),
     #[error("no store at {0}; run an index first")]
     NoStore(String),
     #[error("an index is already running")]
@@ -140,7 +140,7 @@ impl AppState {
         if wanted == Mode::Live {
             // Constructing a live session is what reads the key; the error it returns
             // names what is missing.
-            quarrel_live::Session::live(self.strategy().live_guards, &self.data_dir)
+            banana_live::Session::live(self.strategy().live_guards, &self.data_dir)
                 .map_err(|e| AppError::Refused(e.to_string()))?;
         }
         *mode = Some(wanted);
@@ -152,7 +152,7 @@ impl AppState {
     /// An address, never the key: this is what crosses the IPC boundary, so a screenshot
     /// or a screen share cannot leak the thing that spends the money.
     pub fn wallet(&self) -> Option<alloy_primitives::Address> {
-        quarrel_live::keystore::address(&self.data_dir)
+        banana_live::keystore::address(&self.data_dir)
     }
 
     /// Store a key pasted into Settings, and return the address it derives.
@@ -168,7 +168,7 @@ impl AppState {
                     .into(),
             ));
         }
-        quarrel_live::keystore::save(&self.data_dir, raw)
+        banana_live::keystore::save(&self.data_dir, raw)
             .map_err(|e| AppError::Refused(e.to_string()))
     }
 
@@ -179,7 +179,7 @@ impl AppState {
                 "this session is running in LIVE with this key. Restart before removing it.".into(),
             ));
         }
-        quarrel_live::keystore::clear(&self.data_dir).map_err(|e| AppError::Refused(e.to_string()))
+        banana_live::keystore::clear(&self.data_dir).map_err(|e| AppError::Refused(e.to_string()))
     }
 
     /// True when a `strategy.json` already exists, which is what decides whether the
@@ -240,7 +240,7 @@ impl AppState {
             Err(e) => {
                 self.indexing.store(false, Ordering::SeqCst);
                 Err(AppError::Refused(format!(
-                    "another quarrel process is writing to this store ({e})"
+                    "another banana process is writing to this store ({e})"
                 )))
             }
         }
@@ -287,7 +287,7 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("quarrel-app-test-{name}"));
+        let d = std::env::temp_dir().join(format!("banana-app-test-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -384,11 +384,11 @@ mod tests {
     fn choosing_live_without_a_key_fails_at_the_choice_rather_than_later() {
         // Better here than in front of a feed that will never fire.
         //
-        // The question is asked through `quarrel-live` rather than by naming the variable,
+        // The question is asked through `banana-live` rather than by naming the variable,
         // because `scripts/check-trust-boundary.ps1` fails on that literal anywhere but
         // that crate — and the check is deliberately blunt: one with exceptions is one you
         // can talk your way past. It caught this line when it was written the other way.
-        if quarrel_live::keystore::env_key_present() {
+        if banana_live::keystore::env_key_present() {
             return; // a machine with a key configured cannot exercise this
         }
         let d = temp_dir("modelive");

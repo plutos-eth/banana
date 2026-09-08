@@ -20,18 +20,18 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
-repository = "https://github.com/plutos-eth/quarrel"
-authors = ["quarrel contributors"]
+repository = "https://github.com/plutos-eth/banana"
+authors = ["banana contributors"]
 
 [workspace.dependencies]
 # --- internal -----------------------------------------------------------------
 # Trust boundary (docs/ARCHITECTURE.md): nothing below `live` may depend on `live`.
-quarrel-core = { path = "crates/core" }
-quarrel-chain = { path = "crates/chain" }
-quarrel-store = { path = "crates/store" }
-quarrel-indexer = { path = "crates/indexer" }
-quarrel-backtest = { path = "crates/backtest" }
-quarrel-live = { path = "crates/live" }
+banana-core = { path = "crates/core" }
+banana-chain = { path = "crates/chain" }
+banana-store = { path = "crates/store" }
+banana-indexer = { path = "crates/indexer" }
+banana-backtest = { path = "crates/backtest" }
+banana-live = { path = "crates/live" }
 
 # --- shared -------------------------------------------------------------------
 serde = { version = "1", features = ["derive"] }

@@ -23,7 +23,7 @@
 
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::SolCall;
-use quarrel_core::features::{Presence, Socials};
+use banana_core::features::{Presence, Socials};
 
 use crate::abi::{IPonsFactoryNoExempt, IPonsRouter, IPonsToken};
 

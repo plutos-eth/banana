@@ -24,11 +24,11 @@
 use std::collections::HashMap;
 
 use alloy_primitives::Address;
-use quarrel_core::Bps;
+use banana_core::Bps;
 // The fingerprint and its window live in `core` because both halves of the product need
 // them: the indexer computes one per launch, and the sniper computes one live to count
 // twins. Two implementations of a farm signature would be two different farm signatures.
-pub use quarrel_core::features::{Fingerprint, TWIN_WINDOW_BLOCKS};
+pub use banana_core::features::{Fingerprint, TWIN_WINDOW_BLOCKS};
 
 /// A launch, reduced to what feature computation needs.
 #[derive(Debug, Clone)]
@@ -117,7 +117,7 @@ impl FeatureBuilder {
         }
 
         let deployer_grad_rate_bps = (deployer_launches > 0)
-            .then(|| (deployer_graduations * quarrel_core::BPS) / deployer_launches);
+            .then(|| (deployer_graduations * banana_core::BPS) / deployer_launches);
 
         // --- fingerprint twins in the preceding 30 minutes -------------------------------
         let cutoff = l.block.saturating_sub(TWIN_WINDOW_BLOCKS);
@@ -167,7 +167,7 @@ impl FeatureBuilder {
 mod tests {
     use super::*;
     use alloy_primitives::U256;
-    use quarrel_core::features::{Presence, Socials};
+    use banana_core::features::{Presence, Socials};
 
     fn addr(n: u8) -> Address {
         Address::repeat_byte(n)

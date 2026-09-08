@@ -769,6 +769,143 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "banana-app"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "anyhow",
+ "banana-backtest",
+ "banana-chain",
+ "banana-core",
+ "banana-indexer",
+ "banana-live",
+ "banana-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "banana-backtest"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "banana-core",
+ "banana-indexer",
+ "banana-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "banana-chain"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "async-trait",
+ "banana-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "banana-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "banana-backtest",
+ "banana-chain",
+ "banana-core",
+ "banana-indexer",
+ "banana-store",
+ "clap",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "banana-core"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "trybuild",
+]
+
+[[package]]
+name = "banana-indexer"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "banana-chain",
+ "banana-core",
+ "banana-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "banana-live"
+version = "0.1.0"
+dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives",
+ "alloy-signer",
+ "alloy-signer-local",
+ "alloy-sol-types",
+ "async-trait",
+ "banana-backtest",
+ "banana-chain",
+ "banana-core",
+ "banana-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "banana-store"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "banana-core",
+ "fs4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3890,143 +4027,6 @@ dependencies = [
  "rand_xorshift",
  "regex-syntax",
  "unarray",
-]
-
-[[package]]
-name = "quarrel-app"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "anyhow",
- "quarrel-backtest",
- "quarrel-chain",
- "quarrel-core",
- "quarrel-indexer",
- "quarrel-live",
- "quarrel-store",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "quarrel-backtest"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "quarrel-core",
- "quarrel-indexer",
- "quarrel-store",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tracing",
-]
-
-[[package]]
-name = "quarrel-chain"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "async-trait",
- "quarrel-core",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "quarrel-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "quarrel-backtest",
- "quarrel-chain",
- "quarrel-core",
- "quarrel-indexer",
- "quarrel-store",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "quarrel-core"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "trybuild",
-]
-
-[[package]]
-name = "quarrel-indexer"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "quarrel-chain",
- "quarrel-core",
- "quarrel-store",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "quarrel-live"
-version = "0.1.0"
-dependencies = [
- "alloy-consensus",
- "alloy-eips",
- "alloy-primitives",
- "alloy-signer",
- "alloy-signer-local",
- "alloy-sol-types",
- "async-trait",
- "quarrel-backtest",
- "quarrel-chain",
- "quarrel-core",
- "quarrel-store",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "quarrel-store"
-version = "0.1.0"
-dependencies = [
- "alloy-primitives",
- "fs4",
- "quarrel-core",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tracing",
 ]
 
 [[package]]

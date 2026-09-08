@@ -9,7 +9,7 @@
 //! to the configured endpoints and confirms each assumption against the live chain.
 
 use alloy_primitives::{Address, U256};
-use quarrel_core::curve::LaunchConfig;
+use banana_core::curve::LaunchConfig;
 
 use crate::abi::{IPonsCurve, IPonsFactory};
 use crate::addr;

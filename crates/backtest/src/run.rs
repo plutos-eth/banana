@@ -17,12 +17,12 @@
 
 use std::time::Instant;
 
-use quarrel_core::features::PitFeatures;
-use quarrel_core::filter::EntryFilter;
-use quarrel_core::strategy::{StrategyConfig, SuccessTarget};
-use quarrel_core::{BPS, Bps};
-use quarrel_store::History;
-use quarrel_store::lab::{Candidate, Outcome};
+use banana_core::features::PitFeatures;
+use banana_core::filter::EntryFilter;
+use banana_core::strategy::{StrategyConfig, SuccessTarget};
+use banana_core::{BPS, Bps};
+use banana_store::History;
+use banana_store::lab::{Candidate, Outcome};
 use serde::{Deserialize, Serialize};
 
 use crate::funnel::Funnel;
@@ -60,8 +60,8 @@ pub fn deployer_depth_blocks() -> u64 {
 #[derive(Debug, thiserror::Error)]
 pub enum BacktestError {
     #[error(transparent)]
-    Store(#[from] quarrel_store::StoreError),
-    #[error("the store is empty; run `quarrel index` first")]
+    Store(#[from] banana_store::StoreError),
+    #[error("the store is empty; run `banana index` first")]
     EmptyStore,
     #[error(
         "a {minutes}-minute hold is not precomputed; the store holds 5 and 30 minutes, and \
@@ -95,7 +95,7 @@ pub fn run(history: &History, config: &StrategyConfig) -> Result<BacktestResult>
     // The pre-filter is sound by construction: it may return extra rows, never fewer, so
     // the evaluator below still sees every launch that could pass. Its only job is to keep
     // SQLite from handing us rows nothing will want.
-    let prefilter = quarrel_store::push_down(&config.entry_filter);
+    let prefilter = banana_store::push_down(&config.entry_filter);
     let candidates = history.candidates(Some(&prefilter))?;
     let query_ms = started.elapsed().as_millis() as u64;
 

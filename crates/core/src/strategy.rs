@@ -103,7 +103,7 @@ pub struct PartialExit {
     pub sell_bps: Bps,
 }
 
-/// When to close. **Live only — `quarrel-backtest` ignores this field entirely** (§5.6).
+/// When to close. **Live only — `banana-backtest` ignores this field entirely** (§5.6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExitPolicy {
     pub take_profit_bps: Option<Bps>,
@@ -162,7 +162,7 @@ pub struct StrategyConfig {
     pub entry_model: EntryModel,
     /// Backtest only.
     pub success_target: SuccessTarget,
-    /// Live only. Ignored entirely by `quarrel-backtest` (§5.6).
+    /// Live only. Ignored entirely by `banana-backtest` (§5.6).
     pub exits: ExitPolicy,
     /// Live only.
     pub live_guards: LiveGuards,

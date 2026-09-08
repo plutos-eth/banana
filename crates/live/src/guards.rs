@@ -17,7 +17,7 @@
 //! this file: a rounding error here is money (spec §12).
 
 use alloy_primitives::{Address, U256};
-use quarrel_core::strategy::LiveGuards;
+use banana_core::strategy::LiveGuards;
 use serde::{Deserialize, Serialize};
 
 /// Why an entry was refused by the money guards, in the user's words.

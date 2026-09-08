@@ -61,7 +61,7 @@ impl LiveTransport {
             .timeout(timeout)
             // A stable, honest user agent. Endpoints treat unlabelled clients worse, and
             // an operator who wants to block us should be able to.
-            .user_agent(concat!("quarrel/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("banana/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| TransportError::Network(e.to_string()))?;
         Ok(Self { client, timeout })
@@ -320,7 +320,7 @@ mod tests {
 
     #[tokio::test]
     async fn recording_round_trips_through_a_directory() {
-        let dir = std::env::temp_dir().join(format!("quarrel-rec-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("banana-rec-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         let rec = RecordingTransport::new(
@@ -345,7 +345,7 @@ mod tests {
 
     #[tokio::test]
     async fn recording_skips_error_and_throttle_responses() {
-        let dir = std::env::temp_dir().join(format!("quarrel-rec-err-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("banana-rec-err-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         // A recorded 429 would make replays reproduce a transient endpoint mood.

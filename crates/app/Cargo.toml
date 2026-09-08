@@ -1,5 +1,5 @@
 [package]
-name = "quarrel-app"
+name = "banana-app"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,11 @@ license.workspace = true
 [lib]
 # The desktop entrypoint lives in the library so the command handlers can be unit-tested
 # without starting a window. `main.rs` is a four-line shim over `run()`.
-name = "quarrel_app"
+name = "banana_app"
 crate-type = ["lib"]
 
 [[bin]]
-name = "quarrel-desktop"
+name = "banana-desktop"
 path = "src/main.rs"
 
 [features]
@@ -34,12 +34,12 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { workspace = true }
 
 [dependencies]
-quarrel-core = { workspace = true }
-quarrel-chain = { workspace = true }
-quarrel-store = { workspace = true }
-quarrel-indexer = { workspace = true }
-quarrel-backtest = { workspace = true }
-quarrel-live = { workspace = true }
+banana-core = { workspace = true }
+banana-chain = { workspace = true }
+banana-store = { workspace = true }
+banana-indexer = { workspace = true }
+banana-backtest = { workspace = true }
+banana-live = { workspace = true }
 alloy-primitives = { workspace = true }
 rusqlite = { workspace = true }
 tauri = { workspace = true }

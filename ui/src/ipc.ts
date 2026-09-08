@@ -29,7 +29,7 @@ export interface Socials {
   telegram: Presence;
 }
 
-/** Mirrors `quarrel_core::features::PitFeatures`. Everything a filter may read. */
+/** Mirrors `banana_core::features::PitFeatures`. Everything a filter may read. */
 export interface PitFeatures {
   pair: "eth" | { other: string };
   name: string;

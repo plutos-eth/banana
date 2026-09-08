@@ -124,7 +124,7 @@ export function App() {
         {/* One letter of the wordmark in the key colour, and a cursor after it. The
             application is a terminal; this is the only place it says so out loud. */}
         <span className="topbar__brand">
-          quarre<em>l</em>
+          banan<em>a</em>
         </span>
         <span className="topbar__cursor" aria-hidden="true">
           ▋

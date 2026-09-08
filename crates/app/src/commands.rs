@@ -8,7 +8,7 @@
 //! The UI has no other way out. Its CSP allows `connect-src 'self' ipc:` and nothing else
 //! (PLAN.md C1), so this list *is* the set of things the frontend can cause to happen.
 
-use quarrel_core::strategy::StrategyConfig;
+use banana_core::strategy::StrategyConfig;
 use tauri::{Emitter, Manager, State};
 
 use crate::api;
@@ -43,7 +43,7 @@ pub fn get_launch(state: State<'_, AppState>, token: String) -> Result<api::Laun
 pub fn run_backtest(
     state: State<'_, AppState>,
     config: StrategyConfig,
-) -> Result<quarrel_backtest::BacktestResult> {
+) -> Result<banana_backtest::BacktestResult> {
     api::backtest(&state, &config)
 }
 
@@ -140,11 +140,11 @@ pub fn clear_key(state: State<'_, AppState>) -> Result<()> {
 ///
 /// **Restricted to the explorer origin.** Token names, symbols and logo fields are written
 /// by whoever launched the token, and this is the one command that could turn attacker
-/// text into an outbound request. Anything not under [`quarrel_chain::addr::EXPLORER`] is
+/// text into an outbound request. Anything not under [`banana_chain::addr::EXPLORER`] is
 /// refused, so the worst a hostile launch can do is produce a link that does not open.
 #[tauri::command]
 pub fn open_explorer(url: String) -> Result<()> {
-    let base = quarrel_chain::addr::EXPLORER;
+    let base = banana_chain::addr::EXPLORER;
     if !url.starts_with(&format!("{base}/")) {
         return Err(AppError::Refused(format!(
             "refusing to open {url}: only {base} links are allowed"
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn an_explorer_link_passes_the_origin_check() {
         // Checked up to the point of spawning a browser, which a test must not do.
-        let base = quarrel_chain::addr::EXPLORER;
+        let base = banana_chain::addr::EXPLORER;
         let url = format!("{base}/token/0xabc");
         assert!(url.starts_with(&format!("{base}/")));
     }

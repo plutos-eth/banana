@@ -15,11 +15,11 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use quarrel_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
-use quarrel_chain::rpc::Client;
-use quarrel_chain::transport::LiveTransport;
-use quarrel_live::{Engine, EngineConfig, Event, Mode, Session};
-use quarrel_store::{History, Journal, Lock};
+use banana_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
+use banana_chain::rpc::Client;
+use banana_chain::transport::LiveTransport;
+use banana_live::{Engine, EngineConfig, Event, Mode, Session};
+use banana_store::{History, Journal, Lock};
 use tauri::Manager;
 use tokio::sync::mpsc;
 
@@ -89,7 +89,7 @@ pub async fn start(app: tauri::AppHandle, data_dir: PathBuf) -> Result<i64> {
 
     // Taken before anything else: two engines trading the same wallet from the same
     // directory would each believe they owned the session budget.
-    let lock = Lock::acquire(data_dir.join("live.db")).map_err(quarrel_store::StoreError::from)?;
+    let lock = Lock::acquire(data_dir.join("live.db")).map_err(banana_store::StoreError::from)?;
     let journal = Journal::open(data_dir.join("live.db"))?;
 
     let strategy = state.strategy();

@@ -1,4 +1,4 @@
-//! `quarrel-app` — Tauri backend: commands, events, state and the engine supervisor.
+//! `banana-app` — Tauri backend: commands, events, state and the engine supervisor.
 //!
 //! The engine does not live in the window (spec §4.2). It runs as a supervised
 //! background task with its own lifecycle; the UI is a view over it. Closing or
@@ -34,7 +34,7 @@ pub use state::{AppError, AppState, Mode};
 /// 4. The platform's own application-data directory, created if missing.
 ///
 /// The last one is not a nicety. On macOS an installed binary lives inside
-/// `Quarrel.app/Contents/MacOS`, so writing beside the executable puts a 1 GB database
+/// `Banana.app/Contents/MacOS`, so writing beside the executable puts a 1 GB database
 /// inside the bundle — which breaks code signing, is thrown away by the next update, and
 /// on Linux is simply not writable when the binary sits in `/usr/bin`.
 fn data_dir() -> std::path::PathBuf {
@@ -80,7 +80,7 @@ fn platform_data_dir() -> std::path::PathBuf {
     // this application can be installed on, so the working directory is the honest last
     // resort rather than a panic on startup.
     base.unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("quarrel")
+        .join("banana")
 }
 
 /// Build and run the desktop application.
@@ -88,7 +88,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "quarrel_app=info,quarrel_indexer=info".into()),
+                .unwrap_or_else(|_| "banana_app=info,banana_indexer=info".into()),
         )
         .init();
 

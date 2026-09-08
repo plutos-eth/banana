@@ -13,9 +13,9 @@
 //!    from the indexed window is worth more than one guessed in advance, so this reports
 //!    the distributions they should come from.
 
-use quarrel_core::curve::LaunchConfig;
-use quarrel_store::History;
-use quarrel_store::types::{EntryRule, Side};
+use banana_core::curve::LaunchConfig;
+use banana_store::History;
+use banana_store::types::{EntryRule, Side};
 
 use crate::outcomes::{ReplayCheck, verify_replay};
 
@@ -34,7 +34,7 @@ impl VerifyReport {
 }
 
 /// Replay every curve and compare against the events.
-pub fn verify_all(history: &History, limit: Option<usize>) -> quarrel_store::Result<VerifyReport> {
+pub fn verify_all(history: &History, limit: Option<usize>) -> banana_store::Result<VerifyReport> {
     let base = history
         .get_launch_config(0)?
         .unwrap_or_else(LaunchConfig::live_id_0);
@@ -123,7 +123,7 @@ fn percentiles(mut v: Vec<u64>) -> [u64; 5] {
     out
 }
 
-pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> {
+pub fn distributions(history: &History) -> banana_store::Result<Distributions> {
     let conn = history.conn();
 
     let launches = history.launch_count()?;
@@ -146,7 +146,7 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
     // got there through a nested frame. The route list comes from the ABI rather than from
     // hex literals here: writing them out is how the three-argument `launchToken` -- 23% of
     // launches -- ended up counted as a bundler on the first attempt at this number.
-    let routes = quarrel_chain::launch_tx::launch_selectors_hex();
+    let routes = banana_chain::launch_tx::launch_selectors_hex();
     let holes = vec!["?"; routes.len()].join(", ");
     let bundled = conn.query_row(
         &format!(
@@ -181,7 +181,7 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
     // nullable one. `(SELECT max(block) FROM trades) - last_trade_block` is NULL on a store
     // that has outcomes but no trades, and reading it as `i64` made the whole report fail
     // rather than report an empty distribution.
-    let col = |sql: &str| -> quarrel_store::Result<Vec<u64>> {
+    let col = |sql: &str| -> banana_store::Result<Vec<u64>> {
         let mut stmt = conn.prepare(sql)?;
         let v = stmt
             .query_map([], |r| r.get::<_, Option<i64>>(0))?
@@ -233,7 +233,7 @@ pub fn distributions(history: &History) -> quarrel_store::Result<Distributions> 
 }
 
 /// How many trades a curve saw, split by side, for a sanity read on the trade scan.
-pub fn side_counts(history: &History) -> quarrel_store::Result<(u64, u64, u64)> {
+pub fn side_counts(history: &History) -> banana_store::Result<(u64, u64, u64)> {
     let conn = history.conn();
     let buys = conn.query_row(
         "SELECT count(*) FROM trades WHERE side = ?1",

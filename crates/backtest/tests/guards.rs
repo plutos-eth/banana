@@ -6,11 +6,11 @@
 
 mod support;
 
-use quarrel_backtest::metrics::Results;
-use quarrel_backtest::run::{DEPLOYER_DEPTH_HOURS, MATURITY_HOURS, maturity_blocks};
-use quarrel_core::features::Pair;
-use quarrel_core::filter::{Condition, EntryFilter};
-use quarrel_core::strategy::{StrategyConfig, SuccessTarget};
+use banana_backtest::metrics::Results;
+use banana_backtest::run::{DEPLOYER_DEPTH_HOURS, MATURITY_HOURS, maturity_blocks};
+use banana_core::features::Pair;
+use banana_core::filter::{Condition, EntryFilter};
+use banana_core::strategy::{StrategyConfig, SuccessTarget};
 use support::{Fixture, Launch};
 
 /// Everything passes this, so a test can isolate one guard at a time.
@@ -49,7 +49,7 @@ fn launches_younger_than_the_cutoff_are_excluded_and_counted_separately() {
     }
     let h = f.finish();
 
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
     let all = r.funnel.stage("all_launches").unwrap();
     let matured = r.funnel.stage("matured").unwrap();
 
@@ -77,7 +77,7 @@ fn maturity_is_about_the_window_not_about_how_much_the_token_traded() {
         });
     }
     let h = f.finish();
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     assert_eq!(
         r.funnel.stage("matured").unwrap().remaining,
@@ -91,7 +91,7 @@ fn maturity_is_about_the_window_not_about_how_much_the_token_traded() {
 #[test]
 fn twenty_nine_passing_tokens_yield_no_percentage_field_in_the_response() {
     let h = passing_n(29);
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     assert!(matches!(r.results, Results::InsufficientSample { .. }));
 
@@ -106,7 +106,7 @@ fn twenty_nine_passing_tokens_yield_no_percentage_field_in_the_response() {
 
 #[test]
 fn thirty_passing_tokens_is_the_threshold_at_which_numbers_appear() {
-    let r = quarrel_backtest::run(&passing_n(30), &permissive()).unwrap();
+    let r = banana_backtest::run(&passing_n(30), &permissive()).unwrap();
     let json = serde_json::to_string(&r.results).unwrap();
     assert!(json.contains("hit_rate_bps"), "{json}");
 }
@@ -123,7 +123,7 @@ fn a_token_that_passed_but_could_not_be_priced_still_counts_toward_the_sample() 
         ..Launch::at(2_000)
     });
     let h = f.finish();
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     assert_eq!(r.funnel.stage("passed_filter").unwrap().remaining, 30);
     assert_eq!(r.funnel.stage("priced").unwrap().remaining, 29);
@@ -143,7 +143,7 @@ fn a_token_that_passed_but_could_not_be_priced_still_counts_toward_the_sample() 
 
 #[test]
 fn the_funnel_and_the_regime_warning_are_always_present() {
-    let r = quarrel_backtest::run(&passing_n(30), &permissive()).unwrap();
+    let r = banana_backtest::run(&passing_n(30), &permissive()).unwrap();
     for id in [
         "all_launches",
         "matured",
@@ -161,7 +161,7 @@ fn the_funnel_and_the_regime_warning_are_always_present() {
 fn the_funnel_arithmetic_adds_up_to_the_universe() {
     // A reader must be able to take any stage, look up the one it narrows, and have the
     // subtraction work. `of` is what makes that possible when the funnel branches.
-    let r = quarrel_backtest::run(&passing_n(35), &permissive()).unwrap();
+    let r = banana_backtest::run(&passing_n(35), &permissive()).unwrap();
     for s in &r.funnel.stages {
         let Some(of) = &s.of else {
             assert_eq!(s.id, "all_launches");
@@ -197,7 +197,7 @@ fn migrations_are_counted_against_the_priced_set_not_against_the_target() {
         f.add(Launch::at(50_000 + i).winner());
     }
     let h = f.finish();
-    let r = quarrel_backtest::run(&h, &permissive()).unwrap();
+    let r = banana_backtest::run(&h, &permissive()).unwrap();
 
     let target = r.funnel.stage("reached_target").unwrap();
     let migrated = r.funnel.stage("migrated").unwrap();
@@ -225,7 +225,7 @@ fn the_depth_floor_applies_only_when_the_strategy_reads_a_deployer_feature() {
     let h = f.finish();
 
     // A filter that never looks at the deployer must not pay the C2 cost.
-    let plain = quarrel_backtest::run(
+    let plain = banana_backtest::run(
         &h,
         &with_filter(EntryFilter::all_of([Condition::PairIn {
             pairs: vec![Pair::Eth],
@@ -237,7 +237,7 @@ fn the_depth_floor_applies_only_when_the_strategy_reads_a_deployer_feature() {
     assert_eq!(plain.funnel.stage("passed_filter").unwrap().remaining, 30);
 
     // One that does look must, and must say so as its own stage.
-    let deployer = quarrel_backtest::run(
+    let deployer = banana_backtest::run(
         &h,
         &with_filter(EntryFilter::all_of([Condition::MaxDeployerLaunches {
             max: 3,
@@ -268,7 +268,7 @@ fn deep_enough_launches_survive_the_depth_floor() {
         });
     }
     let h = f.finish();
-    let r = quarrel_backtest::run(
+    let r = banana_backtest::run(
         &h,
         &with_filter(EntryFilter::all_of([Condition::MaxDeployerLaunches {
             max: 3,
@@ -289,7 +289,7 @@ fn the_result_carries_the_fixed_hold_figures_even_when_the_target_is_a_peak() {
         },
         ..permissive()
     };
-    let r = quarrel_backtest::run(&passing_n(30), &cfg).unwrap();
+    let r = banana_backtest::run(&passing_n(30), &cfg).unwrap();
     let m = r.results.measured().unwrap();
 
     assert!(m.target_is_peak_based);
@@ -303,7 +303,7 @@ fn the_result_carries_the_fixed_hold_figures_even_when_the_target_is_a_peak() {
 
 #[test]
 fn a_serialised_backtest_never_uses_the_language_of_profit() {
-    let r = quarrel_backtest::run(&passing_n(30), &permissive()).unwrap();
+    let r = banana_backtest::run(&passing_n(30), &permissive()).unwrap();
     let json = serde_json::to_string(&r).unwrap().to_lowercase();
     for word in ["profit", "return", "earned", "gain", "would have made"] {
         assert!(!json.contains(word), "§5.4 forbids `{word}`");
@@ -313,7 +313,7 @@ fn a_serialised_backtest_never_uses_the_language_of_profit() {
 /// The distribution measured on the real window: the median token's peak is 1.00x.
 #[test]
 fn a_filter_that_selects_nothing_special_reports_a_median_at_or_below_one() {
-    let r = quarrel_backtest::run(&passing_n(40), &permissive()).unwrap();
+    let r = banana_backtest::run(&passing_n(40), &permissive()).unwrap();
     let m = r.results.measured().unwrap();
     assert!(
         m.hold_5m.multiple.p50 <= 10_000,
@@ -326,12 +326,9 @@ fn a_filter_that_selects_nothing_special_reports_a_median_at_or_below_one() {
 
 #[test]
 fn an_empty_store_says_so_rather_than_reporting_a_zero_hit_rate() {
-    let h = quarrel_store::History::in_memory().unwrap();
-    let e = quarrel_backtest::run(&h, &permissive());
-    assert!(matches!(
-        e,
-        Err(quarrel_backtest::BacktestError::EmptyStore)
-    ));
+    let h = banana_store::History::in_memory().unwrap();
+    let e = banana_backtest::run(&h, &permissive());
+    assert!(matches!(e, Err(banana_backtest::BacktestError::EmptyStore)));
 }
 
 #[test]
@@ -343,17 +340,17 @@ fn a_holding_period_the_store_does_not_precompute_is_refused() {
         },
         ..permissive()
     };
-    let e = quarrel_backtest::run(&passing_n(30), &cfg);
+    let e = banana_backtest::run(&passing_n(30), &cfg);
     assert!(matches!(
         e,
-        Err(quarrel_backtest::BacktestError::UnsupportedHold { minutes: 7 })
+        Err(banana_backtest::BacktestError::UnsupportedHold { minutes: 7 })
     ));
 }
 
 // --- helpers ------------------------------------------------------------------------------
 
 /// A store in which exactly `n` matured launches pass a permissive filter.
-fn passing_n(n: u64) -> quarrel_store::History {
+fn passing_n(n: u64) -> banana_store::History {
     let mut f = Fixture::new(0, TO_BLOCK);
     for i in 0..n {
         f.add(Launch::at(1_000 + i));

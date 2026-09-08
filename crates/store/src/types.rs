@@ -118,8 +118,8 @@ impl Side {
 }
 
 /// `Presence` as stored: 0 absent, 1 present, 2 unknown.
-pub fn presence_to_i64(p: quarrel_core::features::Presence) -> i64 {
-    use quarrel_core::features::Presence;
+pub fn presence_to_i64(p: banana_core::features::Presence) -> i64 {
+    use banana_core::features::Presence;
     match p {
         Presence::Absent => 0,
         Presence::Present => 1,
@@ -127,8 +127,8 @@ pub fn presence_to_i64(p: quarrel_core::features::Presence) -> i64 {
     }
 }
 
-pub fn presence_from_i64(v: i64) -> quarrel_core::features::Presence {
-    use quarrel_core::features::Presence;
+pub fn presence_from_i64(v: i64) -> banana_core::features::Presence {
+    use banana_core::features::Presence;
     match v {
         1 => Presence::Present,
         0 => Presence::Absent,
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn presence_round_trips_and_unknown_is_the_safe_default() {
-        use quarrel_core::features::Presence;
+        use banana_core::features::Presence;
         for p in [Presence::Absent, Presence::Present, Presence::Unknown] {
             assert_eq!(presence_from_i64(presence_to_i64(p)), p);
         }

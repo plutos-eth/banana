@@ -12,13 +12,13 @@
 //! facts are the subject. The evaluator is called with `&PitFeatures` here exactly as it is
 //! in the backtest and will be in the sniper: one evaluator, one type, three callers.
 
-use quarrel_backtest::BacktestResult;
-use quarrel_core::features::PitFeatures;
-use quarrel_core::filter::Refusal;
-use quarrel_core::rank::{display_rank, feed_order};
-use quarrel_core::strategy::StrategyConfig;
-use quarrel_store::History;
-use quarrel_store::lab::Candidate;
+use banana_backtest::BacktestResult;
+use banana_core::features::PitFeatures;
+use banana_core::filter::Refusal;
+use banana_core::rank::{display_rank, feed_order};
+use banana_core::strategy::StrategyConfig;
+use banana_store::History;
+use banana_store::lab::Candidate;
 use serde::{Deserialize, Serialize};
 
 use crate::state::{AppError, AppState, Mode, Result};
@@ -85,8 +85,8 @@ pub fn status(state: &AppState) -> Status {
         indexing: state.is_indexing(),
         data_dir: state.data_dir().display().to_string(),
         store,
-        chain_id: quarrel_chain::addr::CHAIN_ID,
-        explorer: quarrel_chain::addr::EXPLORER.to_string(),
+        chain_id: banana_chain::addr::CHAIN_ID,
+        explorer: banana_chain::addr::EXPLORER.to_string(),
         has_saved_strategy: state.has_saved_strategy(),
         wallet: state.wallet().map(|a| format!("{a:#x}")),
         engine_running: state.engine().is_running(),
@@ -147,7 +147,7 @@ pub struct FeedRow {
     pub deployer_launches: u32,
     pub passed: bool,
     /// How near a refusal came, for ordering only. Never a score, never persisted, and it
-    /// cannot turn a refusal into a pass (see `quarrel_core::rank`).
+    /// cannot turn a refusal into a pass (see `banana_core::rank`).
     pub rank_bps: u32,
     pub refusals: Vec<Refusal>,
 }
@@ -307,14 +307,14 @@ pub fn launch_detail(state: &AppState, token: &str) -> Result<LaunchDetail> {
             .ok_or_else(|| AppError::Refused(format!("no launch {token} in this store")))?;
 
         let e = h.enrichment_for(wanted)?;
-        let base = quarrel_chain::addr::EXPLORER;
+        let base = banana_chain::addr::EXPLORER;
         let rules = strategy
             .entry_filter
             .conditions()
             .iter()
             .map(|cond| {
                 let d =
-                    quarrel_core::filter::EntryFilter::Cond((*cond).clone()).evaluate(&c.features);
+                    banana_core::filter::EntryFilter::Cond((*cond).clone()).evaluate(&c.features);
                 RuleOutcome {
                     rule: cond.rule_id().to_string(),
                     passed: d.passed,
@@ -364,7 +364,7 @@ pub fn launch_detail(state: &AppState, token: &str) -> Result<LaunchDetail> {
 // --- view 3: the Strategy Lab -------------------------------------------------------------
 
 pub fn backtest(state: &AppState, config: &StrategyConfig) -> Result<BacktestResult> {
-    state.with_history(|h| Ok(quarrel_backtest::run(h, config)?))
+    state.with_history(|h| Ok(banana_backtest::run(h, config)?))
 }
 
 /// How many indexed launches the filter passes, for the Lab's live count.
@@ -451,7 +451,7 @@ pub fn positions(state: &AppState) -> Positions {
     let running = state.engine().is_running();
     let session = state.engine().session_id();
 
-    let journal = match quarrel_store::Journal::open(state.journal_path()) {
+    let journal = match banana_store::Journal::open(state.journal_path()) {
         Ok(j) => j,
         Err(e) => {
             return Positions {
@@ -528,7 +528,7 @@ pub fn positions(state: &AppState) -> Positions {
     }
 }
 
-fn position_row(journal: &quarrel_store::Journal, p: &quarrel_store::Position) -> PositionRow {
+fn position_row(journal: &banana_store::Journal, p: &banana_store::Position) -> PositionRow {
     // A position is a rehearsal when nothing was ever sent for it. Derived from the fills
     // rather than from the mode, so a row read back later still tells the truth about
     // itself.
@@ -610,10 +610,10 @@ pub fn index_status(state: &AppState) -> Result<IndexStatus> {
         // Three counts, not the whole distribution report: this view is polled while
         // an index runs, and computing every percentile to show three numbers would
         // make the progress bar the slowest thing on screen.
-        let one = |sql: &str| -> quarrel_store::Result<u64> {
+        let one = |sql: &str| -> banana_store::Result<u64> {
             Ok(h.conn().query_row(sql, [], |r| r.get::<_, i64>(0))? as u64)
         };
-        let routes = quarrel_chain::launch_tx::launch_selectors_hex();
+        let routes = banana_chain::launch_tx::launch_selectors_hex();
         let holes = vec!["?"; routes.len()].join(", ");
         let bundled = h.conn().query_row(
             &format!(
@@ -649,8 +649,8 @@ pub fn index_status(state: &AppState) -> Result<IndexStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quarrel_core::features::Pair;
-    use quarrel_core::filter::{Condition, EntryFilter};
+    use banana_core::features::Pair;
+    use banana_core::filter::{Condition, EntryFilter};
 
     /// The store built by `tests/support`, opened through an `AppState`.
     fn state_with(dir: &std::path::Path) -> AppState {
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn status_reports_a_missing_store_without_pretending_it_is_empty() {
-        let d = std::env::temp_dir().join("quarrel-api-nostore");
+        let d = std::env::temp_dir().join("banana-api-nostore");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let s = status(&state_with(&d));
@@ -675,7 +675,7 @@ mod tests {
     /// never resolves, which is the failure spec §3.4 is about.
     #[test]
     fn positions_explain_their_emptiness() {
-        let d = std::env::temp_dir().join("quarrel-api-pos");
+        let d = std::env::temp_dir().join("banana-api-pos");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let p = positions(&state_with(&d));
@@ -694,13 +694,13 @@ mod tests {
     /// the user still owns.
     #[test]
     fn positions_left_open_by_a_dead_session_are_surfaced_and_flagged() {
-        let d = std::env::temp_dir().join("quarrel-api-pos-orphan");
+        let d = std::env::temp_dir().join("banana-api-pos-orphan");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         {
-            let mut j = quarrel_store::Journal::open(d.join("live.db")).unwrap();
+            let mut j = banana_store::Journal::open(d.join("live.db")).unwrap();
             let s = j
-                .begin_session(&quarrel_store::NewSession {
+                .begin_session(&banana_store::NewSession {
                     mode: "test".into(),
                     wallet: alloy_primitives::Address::repeat_byte(1),
                     started_at: 1,
@@ -712,7 +712,7 @@ mod tests {
                 })
                 .unwrap();
             let pos = j
-                .open_position(&quarrel_store::NewPosition {
+                .open_position(&banana_store::NewPosition {
                     session_id: s,
                     token: alloy_primitives::Address::repeat_byte(9),
                     curve: alloy_primitives::Address::repeat_byte(8),
@@ -722,10 +722,10 @@ mod tests {
                     launch_block: 100,
                 })
                 .unwrap();
-            j.record_fill(&quarrel_store::journal::Fill {
+            j.record_fill(&banana_store::journal::Fill {
                 position_id: pos,
                 at: 3,
-                side: quarrel_store::types::Side::Buy,
+                side: banana_store::types::Side::Buy,
                 quote_wei: alloy_primitives::U256::from(1u64),
                 tokens: alloy_primitives::U256::from(10u64),
                 tx_hash: None,
@@ -796,11 +796,11 @@ mod tests {
             name: "x".into(),
             symbol: "X".into(),
             description: String::new(),
-            socials: quarrel_core::features::Socials::NONE,
+            socials: banana_core::features::Socials::NONE,
             exempt_wallets: Some(0),
             dev_buy_bps: Some(0),
             creator_tax_bps: Some(900),
-            fee_recipient: quarrel_core::features::FeeRecipient::Deployer,
+            fee_recipient: banana_core::features::FeeRecipient::Deployer,
             deployer_launches: 0,
             deployer_graduations: 0,
             fingerprint_twins_30m: 0,

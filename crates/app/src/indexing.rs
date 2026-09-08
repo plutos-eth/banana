@@ -9,11 +9,11 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use quarrel_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
-use quarrel_chain::rpc::Client;
-use quarrel_chain::transport::LiveTransport;
-use quarrel_indexer::run::{IndexPlan, run as run_index};
-use quarrel_store::History;
+use banana_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
+use banana_chain::rpc::Client;
+use banana_chain::transport::LiveTransport;
+use banana_indexer::run::{IndexPlan, run as run_index};
+use banana_store::History;
 use serde::Serialize;
 use tauri::Manager;
 
@@ -84,7 +84,7 @@ async fn run(
     let mut history = History::open(data_dir.join("history.db"))?;
 
     let head = client
-        .block_number(quarrel_chain::gate::Priority::Bulk)
+        .block_number(banana_chain::gate::Priority::Bulk)
         .await?;
     let plan = match (from, to) {
         (Some(f), Some(t)) => IndexPlan {

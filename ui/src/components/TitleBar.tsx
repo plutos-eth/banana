@@ -46,7 +46,7 @@ export function TitleBar() {
     <div className="titlebar" data-tauri-drag-region>
       <span className="titlebar__brand" data-tauri-drag-region>
         <span className="titlebar__dot" aria-hidden="true" />
-        <span className="titlebar__name">quarrel</span>
+        <span className="titlebar__name">banana</span>
       </span>
       <div className="titlebar__controls">
         <button

@@ -1,10 +1,10 @@
-//! `quarrel` — thin headless entrypoint for `index` and `doctor`.
+//! `banana` — thin headless entrypoint for `index` and `doctor`.
 //!
 //! The desktop app is the primary surface (spec §10). This binary exists so a long index
 //! can run from a terminal or a cron job, and so `doctor` can be scripted.
 //!
 //! **No command here requires a private key**, and this crate deliberately does not depend
-//! on `quarrel-live`, which is what makes that guarantee mechanical rather than
+//! on `banana-live`, which is what makes that guarantee mechanical rather than
 //! aspirational (PLAN.md C6). `scripts/check-trust-boundary.ps1` enforces it in CI.
 
 #![forbid(unsafe_code)]
@@ -13,19 +13,19 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use banana_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
+use banana_chain::rpc::Client;
+use banana_chain::transport::{LiveTransport, RecordingTransport, ReplayTransport, Transport};
+use banana_chain::{addr, doctor};
+use banana_core::strategy::StrategyConfig;
+use banana_indexer::run::{IndexPlan, run as run_index};
+use banana_indexer::verify;
+use banana_store::{History, Lock};
 use clap::{Parser, Subcommand};
-use quarrel_chain::gate::{Gate, GateConfig, default_endpoints, parse_endpoints};
-use quarrel_chain::rpc::Client;
-use quarrel_chain::transport::{LiveTransport, RecordingTransport, ReplayTransport, Transport};
-use quarrel_chain::{addr, doctor};
-use quarrel_core::strategy::StrategyConfig;
-use quarrel_indexer::run::{IndexPlan, run as run_index};
-use quarrel_indexer::verify;
-use quarrel_store::{History, Lock};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "quarrel",
+    name = "banana",
     version,
     about = "Local sniper terminal and strategy backtester for pons v2.",
     long_about = "Every command here runs with no private key. Real money moves only in the \
@@ -186,7 +186,7 @@ impl Transport for SharedRecorder {
         &self,
         url: &str,
         body: &str,
-    ) -> Result<quarrel_chain::transport::HttpResponse, quarrel_chain::transport::TransportError>
+    ) -> Result<banana_chain::transport::HttpResponse, banana_chain::transport::TransportError>
     {
         self.0.post(url, body).await
     }
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "quarrel=info".into()),
+                .unwrap_or_else(|_| "banana=info".into()),
         )
         .with_writer(std::io::stderr)
         .init();
@@ -206,7 +206,7 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Command::Doctor { probe, curve } => {
-            println!("quarrel doctor — chain {}", addr::CHAIN_ID);
+            println!("banana doctor — chain {}", addr::CHAIN_ID);
             println!();
 
             let mut report = doctor::offline();
@@ -254,7 +254,7 @@ async fn main() -> Result<()> {
             let _lock = Lock::acquire(&db_path).context("taking the history writer lock")?;
             let mut history = History::open(&db_path).context("opening history.db")?;
 
-            let head = client.block_number(quarrel_chain::Priority::Bulk).await?;
+            let head = client.block_number(banana_chain::Priority::Bulk).await?;
             let mut plan = IndexPlan::last_24h(head);
             plan.skip_calldata = *skip_calldata;
             plan.anchor_every = *anchor_every;
@@ -529,7 +529,7 @@ async fn main() -> Result<()> {
             let db_path = data_dir.join("history.db");
             let history = History::open_read_only(&db_path)
                 .with_context(|| format!("opening {}", db_path.display()))?;
-            let result = quarrel_backtest::run(&history, &config)?;
+            let result = banana_backtest::run(&history, &config)?;
 
             if *json {
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -545,8 +545,8 @@ async fn main() -> Result<()> {
 ///
 /// Everything §5.5 makes mandatory is printed unconditionally: the funnel, the effective
 /// universe, the cutoff, and the regime warning.
-fn print_backtest(r: &quarrel_backtest::BacktestResult) {
-    use quarrel_backtest::metrics::Results;
+fn print_backtest(r: &banana_backtest::BacktestResult) {
+    use banana_backtest::metrics::Results;
 
     println!();
     println!(

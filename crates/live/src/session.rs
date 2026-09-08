@@ -16,7 +16,7 @@
 //! spend.
 
 use alloy_primitives::{Address, U256};
-use quarrel_core::strategy::LiveGuards;
+use banana_core::strategy::LiveGuards;
 
 use crate::briefing::Briefing;
 use crate::guards::{Budget, Refused, Spend};

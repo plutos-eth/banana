@@ -47,10 +47,10 @@
 use std::time::Duration;
 
 use alloy_primitives::{Address, B256, U256};
-use quarrel_chain::addr;
-use quarrel_chain::gate::{Priority, RpcError};
-use quarrel_chain::launch_log;
-use quarrel_chain::rpc::{Client, LogFilter};
+use banana_chain::addr;
+use banana_chain::gate::{Priority, RpcError};
+use banana_chain::launch_log;
+use banana_chain::rpc::{Client, LogFilter};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -409,8 +409,8 @@ mod tests {
     use super::*;
     use alloy_primitives::hex;
     use async_trait::async_trait;
-    use quarrel_chain::gate::{Endpoint, Gate, GateConfig};
-    use quarrel_chain::transport::{HttpResponse, Transport, TransportError};
+    use banana_chain::gate::{Endpoint, Gate, GateConfig};
+    use banana_chain::transport::{HttpResponse, Transport, TransportError};
     use std::sync::Mutex;
 
     /// Answers by method from a script, and records what was asked.

@@ -1,16 +1,16 @@
 //! A store built by hand, so the guards can be tested without an indexed window.
 //!
 //! Shared by the guard, denominator and pushdown tests. Everything is written through the
-//! real `quarrel-store` API rather than raw SQL, so a schema change breaks the fixture
+//! real `banana-store` API rather than raw SQL, so a schema change breaks the fixture
 //! rather than letting the tests drift away from what the indexer actually writes.
 
 #![allow(dead_code)]
 
 use alloy_primitives::{Address, B256, U256};
-use quarrel_core::features::{Presence, Socials};
-use quarrel_store::History;
-use quarrel_store::history::{EnrichmentRow, LaunchRow, OutcomeRow, PhaseState, PitFeaturesRow};
-use quarrel_store::types::EntryRule;
+use banana_core::features::{Presence, Socials};
+use banana_store::History;
+use banana_store::history::{EnrichmentRow, LaunchRow, OutcomeRow, PhaseState, PitFeaturesRow};
+use banana_store::types::EntryRule;
 
 pub fn addr_n(n: u64) -> Address {
     let mut b = [0u8; 20];

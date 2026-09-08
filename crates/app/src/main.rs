@@ -8,5 +8,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    quarrel_app::run();
+    banana_app::run();
 }

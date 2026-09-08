@@ -1,4 +1,4 @@
-//! `quarrel-live` — the sniper executor.
+//! `banana-live` — the sniper executor.
 //!
 //! # Trust boundary
 //!

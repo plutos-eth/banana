@@ -11,7 +11,7 @@
 //! > **Soundness.** Every launch the Rust evaluator would pass is returned by the SQL.
 //! > The SQL may return extra rows; it may never drop one.
 //!
-//! The Rust evaluator in `quarrel-core` then runs over what comes back and makes the
+//! The Rust evaluator in `banana-core` then runs over what comes back and makes the
 //! actual decision. There is still exactly one evaluator, so the Lab and the live sniper
 //! remain provably identical — the SQL is an index-assisted narrowing step that cannot
 //! change an answer, only the amount of work. Tests assert the containment over random
@@ -24,8 +24,8 @@
 //! `Not` is pushed only when its child is **exact**, and otherwise degrades to `1`. Each
 //! fragment therefore carries whether it is exact, not merely whether it exists.
 
-use quarrel_core::features::{FeeRecipient, Pair};
-use quarrel_core::filter::{Condition, EntryFilter};
+use banana_core::features::{FeeRecipient, Pair};
+use banana_core::filter::{Condition, EntryFilter};
 use rusqlite::types::Value;
 
 /// A `WHERE` fragment and its bound parameters.
@@ -273,7 +273,7 @@ fn pair_keys(pairs: &[Pair]) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quarrel_core::pattern::Pattern;
+    use banana_core::pattern::Pattern;
 
     fn twitter() -> EntryFilter {
         EntryFilter::Cond(Condition::RequireTwitter)

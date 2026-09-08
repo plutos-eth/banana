@@ -152,7 +152,7 @@ fn no_f64_in_the_money_path() {
 
     assert!(
         problems.is_empty(),
-        "floating point found in quarrel-core ({}):\n  {}\n\nMoney is U256 and ratios are \
+        "floating point found in banana-core ({}):\n  {}\n\nMoney is U256 and ratios are \
          integer basis points (spec §12). If a use really is display-only, mark the line \
          with `f64-ok:` and a reason.",
         problems.len(),

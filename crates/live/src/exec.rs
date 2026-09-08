@@ -39,11 +39,11 @@ use std::time::Duration;
 
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::{SolCall, SolEvent, SolValue};
-use quarrel_chain::abi::{IPonsCurve, IPonsToken};
-use quarrel_chain::gate::{Priority, RpcError};
-use quarrel_chain::rpc::{Client, Receipt};
-use quarrel_core::Bps;
-use quarrel_store::types::Side;
+use banana_chain::abi::{IPonsCurve, IPonsToken};
+use banana_chain::gate::{Priority, RpcError};
+use banana_chain::rpc::{Client, Receipt};
+use banana_core::Bps;
+use banana_store::types::Side;
 
 use crate::guards::Spend;
 use crate::route::Route;
@@ -159,7 +159,7 @@ pub async fn buy(
         Route::Curve { curve } => *curve,
         Route::Pool { .. } => {
             return Err(ExecError::NoVenue(
-                "this token has already graduated; quarrel only opens positions on the \
+                "this token has already graduated; banana only opens positions on the \
                  curve, where the opening-tax edge is"
                     .into(),
             ));
@@ -348,7 +348,7 @@ async fn send(
     tax_bps: Option<Bps>,
 ) -> Result<Filled, ExecError> {
     let tx = crate::signer::TxRequest {
-        chain_id: quarrel_chain::addr::CHAIN_ID,
+        chain_id: banana_chain::addr::CHAIN_ID,
         nonce: quoted.nonce,
         to,
         value,
@@ -480,7 +480,7 @@ pub fn read_back(receipt: &Receipt, curve: Address, side: Side) -> (U256, U256, 
 mod tests {
     use super::*;
     use alloy_primitives::Bytes;
-    use quarrel_chain::rpc::RawLog;
+    use banana_chain::rpc::RawLog;
 
     fn log(curve: Address, topic0: B256, words: &[u64]) -> RawLog {
         let mut data = Vec::new();

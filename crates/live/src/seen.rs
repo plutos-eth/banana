@@ -39,13 +39,13 @@ use std::collections::HashMap;
 
 use alloy_primitives::Address;
 use alloy_sol_types::SolEvent;
-use quarrel_chain::abi::IPonsFactory;
-use quarrel_chain::addr;
-use quarrel_chain::gate::{Priority, RpcError};
-use quarrel_chain::launch_log;
-use quarrel_chain::rpc::{Client, LogFilter};
-use quarrel_core::features::{Fingerprint, TWIN_WINDOW_BLOCKS};
-use quarrel_store::{DeployerSeen, History};
+use banana_chain::abi::IPonsFactory;
+use banana_chain::addr;
+use banana_chain::gate::{Priority, RpcError};
+use banana_chain::launch_log;
+use banana_chain::rpc::{Client, LogFilter};
+use banana_core::features::{Fingerprint, TWIN_WINDOW_BLOCKS};
+use banana_store::{DeployerSeen, History};
 use serde::{Deserialize, Serialize};
 
 /// Largest hole the bridge will close, in blocks. ~30 minutes.
@@ -364,7 +364,7 @@ pub enum BridgeError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quarrel_core::features::{Presence, Socials};
+    use banana_core::features::{Presence, Socials};
 
     fn addr_n(n: u8) -> Address {
         Address::repeat_byte(n)
@@ -547,9 +547,9 @@ mod tests {
     #[tokio::test]
     async fn a_hole_too_wide_to_bridge_is_refused_by_name() {
         // No transport is reached: the refusal happens on the span alone.
-        let gate = quarrel_chain::gate::Gate::new(
+        let gate = banana_chain::gate::Gate::new(
             Box::new(Unreachable),
-            vec![quarrel_chain::gate::Endpoint::new("http://x", "x", true)],
+            vec![banana_chain::gate::Endpoint::new("http://x", "x", true)],
             Default::default(),
         );
         let client = Client::new(gate);
@@ -563,12 +563,12 @@ mod tests {
     struct Unreachable;
 
     #[async_trait::async_trait]
-    impl quarrel_chain::transport::Transport for Unreachable {
+    impl banana_chain::transport::Transport for Unreachable {
         async fn post(
             &self,
             _u: &str,
             _b: &str,
-        ) -> Result<quarrel_chain::transport::HttpResponse, quarrel_chain::transport::TransportError>
+        ) -> Result<banana_chain::transport::HttpResponse, banana_chain::transport::TransportError>
         {
             panic!("the span check must happen before any request");
         }

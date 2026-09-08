@@ -405,7 +405,7 @@ impl Client {
     /// Broadcast a signed transaction.
     ///
     /// The only method in this file that changes anything. Producing its argument requires
-    /// a signature, and a signature requires the key, which exists in `quarrel-live` and
+    /// a signature, and a signature requires the key, which exists in `banana-live` and
     /// nowhere else — so this being here does not widen the trust boundary of spec §3.8.
     pub async fn send_raw_transaction(&self, raw: &[u8], p: Priority) -> Result<B256, RpcError> {
         let v = self
