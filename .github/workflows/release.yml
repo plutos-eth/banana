@@ -95,7 +95,9 @@ jobs:
             Verify what you downloaded against `SHA256SUMS.txt` before running something
             that will hold a private key.
 
-            **No LIVE trade has ever been executed on mainnet.** See the README.
+            LIVE mode is young and two things are not implemented yet — selling a
+            position that graduated to a v4 pool, and non-ETH pairs. Read the README
+            before trading, and run TEST first.
 
   # Runs after every platform has uploaded, so the sums cover the whole set.
   checksums:

@@ -58,20 +58,18 @@ Specifically, and in plain terms:
 - **Your private key is stored in plaintext.** See [SECURITY.md](SECURITY.md). Use a wallet that
   holds only what you are prepared to lose.
 
-### The live path has never sent a transaction
+### Two things LIVE mode will not do
 
-This matters more than anything else on this page, so it is not in a footnote.
+LIVE has been exercised on mainnet by a small number of testers, on their own machines and their
+own wallets. That is not the same as being proven: it is a young program trading a fast market,
+and the sensible way to start is with an amount whose total loss would not change your week.
 
-TEST mode has been run against mainnet extensively: it detects launches, enriches them, evaluates
-them, waits out the tax decay, prices the order, and simulates it against the real curve with
-`eth_call` and `eth_estimateGas`. Every step is exercised. It stops at the signature, because a
-TEST session holds no key and there is nothing to sign with.
+TEST mode is a real rehearsal rather than a mock. It detects launches, enriches them, evaluates
+them, waits out the tax decay, prices the order and simulates it against the live curve with
+`eth_call` and `eth_estimateGas` — every step, against the real chain. It stops at the signature,
+because a TEST session holds no key and has nothing to sign with. Run it first.
 
-**No LIVE buy or sell has ever been executed on mainnet — not once, by anyone.** The signing and
-broadcast path is written and unit-tested; it has never run against real funds. If you use LIVE
-mode you are the first, and you should start with an amount whose total loss would not matter.
-
-Two known gaps you will meet if you do:
+Two gaps are not about testing but about code that is not written yet, and you will meet them:
 
 | gap | what happens |
 |---|---|
