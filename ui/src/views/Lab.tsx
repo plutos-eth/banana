@@ -94,10 +94,14 @@ function Funnel({ result }: { result: BacktestResult }) {
             <tr key={s.id}>
               <th className="funnel__count mono">{count(s.remaining)}</th>
               <td className="funnel__bar">
-                <span
-                  className="funnel__fill"
-                  style={{ width: `${first > 0 ? (s.remaining / first) * 100 : 0}%` }}
-                />
+                {/* The fill sits in a track, so a stage that kept under a percent still
+                    reads as a nearly-empty bar rather than as a missing one. */}
+                <span className="funnel__track">
+                  <span
+                    className="funnel__fill"
+                    style={{ width: `${first > 0 ? (s.remaining / first) * 100 : 0}%` }}
+                  />
+                </span>
               </td>
               <td className="funnel__label">
                 {s.label}

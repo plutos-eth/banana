@@ -209,6 +209,7 @@ export function Feed() {
   return (
     <div className="view">
       <div className="toolbar">
+        <span className="toolbar__title">Feed</span>
         <button
           type="button"
           className={`chip${passingOnly ? " is-on" : ""}`}
@@ -251,15 +252,10 @@ export function Feed() {
         passingOnly={passingOnly}
       />
 
-      {page?.truncated && (
-        <div className="banner banner--info">
-          Showing the newest {count(page.scanned)} launches. The store holds more; the
-          Strategy Lab reads the whole window.
-        </div>
-      )}
       <div className="banner banner--info">
-        Below is the <b>indexed</b> window, evaluated by the saved strategy — the past, with
-        outcomes. The live tail above is this session only and is not in the store.
+        The <b>indexed</b> window, evaluated by the saved strategy — the past, with outcomes.
+        {page?.truncated &&
+          ` Showing the newest ${count(page.scanned)}; the store holds more, and the Strategy Lab reads the whole window.`}
       </div>
 
       {!hasBackend() ? (
@@ -341,11 +337,12 @@ function Row({
       </span>
       <span className="col col--num mono">{row.twins}</span>
       <span className={`col col--decision ${row.passed ? "is-pass" : "is-refuse"}`}>
-        {row.passed ? "PASS" : "refused"}
+        {row.passed ? "pass" : "refused"}
       </span>
       <span className="col col--why">
-        {/* Spec §3.4: the rule and the values, not just "rejected". */}
-        {row.refusals.map((r) => r.rule).join(", ")}
+        {/* Spec §3.4: the rule and the values, not just "rejected". A passing row gets a
+            dash rather than nothing — an empty cell reads as a value that failed to load. */}
+        {row.passed ? "—" : row.refusals.map((r) => r.rule).join(", ")}
       </span>
     </button>
   );

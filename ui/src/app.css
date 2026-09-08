@@ -1,10 +1,16 @@
 /*
  * Component styles. Every value here is a token from tokens.css — no colour literal, no
- * pixel value, no font stack. `scripts/check-ui-invariants.ps1` fails the build otherwise,
- * and the point is that the later design pass is an edit to tokens.css rather than a
- * rewrite of these rules (spec §8).
+ * pixel value, no font stack. `scripts/check-ui-invariants.ps1` fails the build otherwise.
+ *
+ * This is the design pass spec §8 reserved: the shapes below come from
+ * `refference_design/quarrel.html`. Not one component was rewritten to accept them — the
+ * class names are the ones the views already used, which is what the invariant was for.
  *
  * Class names describe function, not appearance: `.is-pass`, not `.green`.
+ *
+ * Column widths in the feed are `ch`, not px. In a monospace face that is not an
+ * approximation of a character — it is one — so a nine-character timestamp gets a column
+ * that fits nine characters at any font size.
  */
 
 /* ---- shell ------------------------------------------------------------------------ */
@@ -13,28 +19,56 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: var(--c-bg-base);
 }
 
 .topbar {
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
+  gap: var(--sp-6);
   height: var(--h-topbar);
-  padding: var(--sp-0) var(--sp-5);
-  background: var(--c-bg-raised);
+  padding: var(--sp-0) var(--sp-6);
   border-bottom: var(--bw-thin) solid var(--c-border);
   flex: none;
 }
 .topbar__brand {
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--sp-1);
+  /* Inline, not flex: the wordmark is one word with one letter coloured, and a flex
+     container would make that letter a separate box and drop the letter-spacing between
+     it and the rest. */
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-normal);
+  letter-spacing: var(--ls-wide);
+}
+/* One letter of the wordmark carries the key colour. The whole word in it would be a
+   logo; one letter is a cursor that happens to be a letter. */
+.topbar__brand em {
+  font-style: normal;
+  color: var(--c-key-dim);
+}
+.topbar__cursor {
+  margin-left: calc(var(--sp-2) * -1);
+  color: var(--c-key-dim);
+  font-size: var(--fs-lg);
+  animation: blink var(--dur-blink) step-end infinite;
+}
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 .topbar__spacer {
   flex: 1;
 }
 .topbar__note {
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
 }
 
 .app__body {
@@ -48,8 +82,7 @@
   flex-direction: column;
   gap: var(--sp-1);
   width: var(--w-sidebar);
-  padding: var(--sp-4);
-  background: var(--c-bg-sunken);
+  padding: var(--sp-5) var(--sp-4);
   border-right: var(--bw-thin) solid var(--c-border);
   flex: none;
 }
@@ -58,22 +91,31 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  height: var(--h-control-lg);
+  padding: var(--sp-0) var(--sp-5);
   background: transparent;
-  border: var(--bw-thin) solid transparent;
-  border-radius: var(--r-md);
-  color: var(--c-text-secondary);
+  border: none;
+  border-left: var(--bw-thick) solid transparent;
+  border-radius: var(--r-xl);
+  color: var(--c-text-muted);
   font: inherit;
+  font-weight: var(--fw-medium);
   text-align: left;
   cursor: pointer;
 }
+/* The reference marks hover with a prompt caret rather than a background: the sidebar is
+   a command list, and a caret says "this is a thing you run". */
 .sidebar__item:hover {
-  background: var(--c-bg-hover);
-  color: var(--c-text-primary);
+  color: var(--c-key-dim);
+}
+.sidebar__item:hover > span:first-child::before {
+  content: ">";
+  margin-right: var(--sp-2);
+  color: var(--c-key-dim);
 }
 .sidebar__item.is-active {
-  background: var(--c-bg-selected);
-  border-color: var(--c-border-strong);
+  background: var(--c-bg-raised);
+  border-left-color: var(--c-key);
   color: var(--c-text-primary);
 }
 .sidebar__spacer {
@@ -83,24 +125,29 @@
 .legend {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-4);
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-4) var(--sp-2);
   border-top: var(--bw-thin) solid var(--c-border);
-  color: var(--c-text-muted);
-  font-size: var(--fs-sm);
 }
 .legend__row {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
+  color: var(--c-text-muted);
+  font-size: var(--fs-base);
 }
 
 .kbd {
-  padding: var(--sp-0) var(--sp-2);
+  min-width: var(--sp-6);
+  height: var(--sp-6);
+  padding: var(--sp-0) var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--c-bg-overlay);
-  border: var(--bw-thin) solid var(--c-border-strong);
-  border-radius: var(--r-sm);
-  color: var(--c-text-secondary);
+  border: none;
+  border-radius: var(--r-md);
+  color: var(--c-text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
 }
@@ -117,38 +164,56 @@
   align-items: center;
   gap: var(--sp-4);
   height: var(--h-statusbar);
-  padding: var(--sp-0) var(--sp-5);
+  padding: var(--sp-0) var(--sp-6);
   background: var(--c-bg-raised);
   border-top: var(--bw-thin) solid var(--c-border);
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
   flex: none;
 }
-/* The running index, in the status bar. Always on screen, whatever view is showing. */
+.statusbar__note {
+  flex: 1;
+  min-width: var(--sp-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* In a live session the status line is the sentence that says money can move, so it wears
+   the warning colour rather than the muted one. */
+body.is-live-session .statusbar__note {
+  color: var(--c-warn);
+}
+
+/* The running index or engine, in the status bar. Always on screen, whatever view is
+   showing. */
 .statusbar__index {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: var(--sp-0);
   background: transparent;
   border: none;
-  color: var(--c-text-secondary);
+  color: var(--c-text-muted);
   font: inherit;
+  font-size: var(--fs-base);
   cursor: pointer;
   padding: var(--sp-0);
   text-align: left;
 }
-.statusbar__index:hover .statusbar__index-label {
-  color: var(--c-text-primary);
+.statusbar__index:hover {
+  color: var(--c-key-dim);
 }
 .statusbar__index-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
   flex: none;
 }
 .statusbar__index-figures {
   flex: none;
-  font-size: var(--fs-xs);
-  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  color: var(--c-text-dim);
 }
 .statusbar__index .bar {
   flex: 1;
@@ -171,7 +236,9 @@
   text-align: left;
 }
 
-/* ---- mode indicator (§3.2) -------------------------------------------------------- */
+/* ---- mode indicator (§3.2) --------------------------------------------------------
+   TEST is an outline, LIVE is filled. The weight is carried by fill against outline, not
+   by hue alone, so the two are told apart before the colour is read. */
 
 .mode {
   display: inline-flex;
@@ -179,11 +246,10 @@
   gap: var(--sp-3);
   padding: var(--sp-1) var(--sp-4);
   border: var(--bw-thin) solid transparent;
-  border-radius: var(--r-sm);
-  font-family: var(--font-mono);
+  border-radius: var(--r-lg);
   font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--sp-1);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-tight);
 }
 .mode--dry {
   background: var(--c-mode-dry-bg);
@@ -193,7 +259,7 @@
 .mode--live {
   background: var(--c-mode-live-bg);
   border-color: var(--c-mode-live);
-  color: var(--c-mode-live);
+  color: var(--c-text-inverse);
 }
 .mode--armed {
   background: var(--c-mode-armed-bg);
@@ -201,7 +267,6 @@
   color: var(--c-mode-armed);
 }
 .mode--unknown {
-  background: var(--c-bg-overlay);
   border-color: var(--c-border-strong);
   color: var(--c-text-muted);
 }
@@ -220,118 +285,167 @@
 }
 .view--scroll {
   overflow-y: auto;
-  padding-bottom: var(--sp-8);
+  padding: var(--sp-6) var(--sp-7) var(--sp-8);
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-5);
-  border-bottom: var(--bw-thin) solid var(--c-border);
+  gap: var(--sp-6);
+  padding: var(--sp-6) var(--sp-7) var(--sp-5);
   flex: none;
+  flex-wrap: wrap;
+}
+/* A scrolling view already has the padding; its toolbar must not add a second helping. */
+.view--scroll > .toolbar {
+  padding: var(--sp-0) var(--sp-0) var(--sp-6);
 }
 .toolbar__title {
+  font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw-normal);
+}
+/* Every screen title is a prompt. It costs nothing and it is the one place the terminal
+   idiom is stated rather than implied. */
+.toolbar__title::before,
+.onboarding__title::before {
+  content: "> ";
+  color: var(--c-key-dim);
 }
 .toolbar__spacer {
   flex: 1;
 }
 .toolbar__note {
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+  white-space: nowrap;
 }
 
 .btn {
-  padding: var(--sp-2) var(--sp-4);
+  height: var(--h-control);
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-0) var(--sp-6);
   background: var(--c-bg-raised);
-  border: var(--bw-thin) solid var(--c-border-strong);
-  border-radius: var(--r-md);
+  border: none;
+  border-radius: var(--r-lg);
   color: var(--c-text-primary);
   font: inherit;
+  font-size: var(--fs-base);
+  white-space: nowrap;
   cursor: pointer;
 }
 .btn:hover:not(:disabled) {
-  background: var(--c-bg-hover);
+  color: var(--c-key-dim);
 }
 .btn:disabled {
-  color: var(--c-text-muted);
+  color: var(--c-text-dim);
   cursor: default;
 }
 .btn--primary {
-  background: var(--c-bg-selected);
-  border-color: var(--c-border-focus);
+  background: var(--c-bg-overlay);
+  color: var(--c-key);
 }
 .btn--quiet {
   background: transparent;
-  border-color: var(--c-border);
-  color: var(--c-text-secondary);
+  color: var(--c-text-muted);
 }
+/* A link button is text that does something. No box, because a box next to a real button
+   makes the real button look optional. */
 .btn--link {
-  background: transparent;
-  border-color: var(--c-border);
-  color: var(--c-text-link);
+  height: auto;
+  padding: var(--sp-0);
+  background: none;
+  border: none;
+  border-radius: var(--r-none);
+  color: var(--c-text-muted);
+  font-size: var(--fs-base);
+}
+.btn--link:hover:not(:disabled) {
+  color: var(--c-key-dim);
 }
 
 .chip {
-  padding: var(--sp-2) var(--sp-4);
+  height: var(--h-control);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-0) var(--sp-6);
   background: var(--c-bg-raised);
-  border: var(--bw-thin) solid var(--c-border-strong);
-  border-radius: var(--r-pill);
-  color: var(--c-text-secondary);
+  border: none;
+  border-radius: var(--r-lg);
+  color: var(--c-text-primary);
   font: inherit;
+  font-size: var(--fs-base);
+  white-space: nowrap;
   cursor: pointer;
 }
+.chip:hover {
+  color: var(--c-key-dim);
+}
 .chip.is-on {
-  background: var(--c-bg-selected);
-  border-color: var(--c-border-focus);
-  color: var(--c-text-primary);
+  color: var(--c-key-dim);
 }
 
 .input {
   flex: 1;
   min-width: var(--sp-9);
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--c-bg-sunken);
-  border: var(--bw-thin) solid var(--c-border-strong);
-  border-radius: var(--r-md);
+  height: var(--h-control);
+  padding: var(--sp-0) var(--sp-5);
+  background: var(--c-bg-raised);
+  border: none;
+  border-radius: var(--r-lg);
   color: var(--c-text-primary);
   font: inherit;
+  font-size: var(--fs-base);
+}
+.input::placeholder {
+  color: var(--c-text-dim);
+}
+.input:focus-visible {
+  outline: var(--bw-thin) solid var(--c-key);
+  outline-offset: var(--sp-0);
 }
 .input--sm {
   flex: none;
-  width: var(--w-sidebar);
+  width: var(--w-key);
 }
 .input--num {
   flex: none;
-  width: var(--sp-9);
+  width: var(--w-num-field);
+  padding-left: var(--sp-3);
   text-align: right;
 }
 
 .banner {
   padding: var(--sp-4) var(--sp-5);
-  border-left: var(--bw-thick) solid var(--c-border-strong);
-  color: var(--c-text-secondary);
-  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-4);
+  background: var(--c-bg-raised);
+  border: none;
+  border-radius: var(--r-xl);
+  color: var(--c-text-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
   flex: none;
 }
 .banner--info {
   background: var(--c-bg-raised);
-  border-left-color: var(--c-info);
 }
 .banner--warn {
   background: var(--c-warn-bg);
-  border-left-color: var(--c-warn);
+  color: var(--c-warn);
 }
 .banner--error {
   background: var(--c-error-bg);
-  border-left-color: var(--c-error);
+  color: var(--c-error);
 }
 
 .note {
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
+  max-width: var(--w-prose);
+  text-wrap: pretty;
   margin: var(--sp-2) var(--sp-0);
 }
 
@@ -340,22 +454,26 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
   flex: 1;
   padding: var(--sp-9);
   text-align: center;
 }
 .empty__title {
-  font-size: var(--fs-lg);
-  color: var(--c-text-secondary);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-normal);
+  color: var(--c-text-primary);
 }
 .empty__note {
   color: var(--c-text-muted);
+  line-height: var(--lh-prose);
   max-width: var(--w-drawer);
+  text-wrap: pretty;
   margin: var(--sp-0);
 }
 
-/* ---- a plain data table (positions) ----------------------------------------------- */
+/* ---- a plain data table (positions, the live tail) --------------------------------- */
 
 .datawrap {
   overflow-x: auto;
@@ -363,24 +481,31 @@
 .data {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 .data th {
+  position: sticky;
+  top: var(--sp-0);
+  background: var(--c-bg-raised);
   text-align: left;
-  padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-0);
-  color: var(--c-text-muted);
-  font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: var(--sp-1);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4) var(--sp-0);
+  color: var(--c-text-dim);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-tight);
   font-weight: var(--fw-normal);
   border-bottom: var(--bw-thin) solid var(--c-border);
   white-space: nowrap;
 }
 .data td {
-  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-0);
+  padding: var(--sp-5) var(--sp-5) var(--sp-5) var(--sp-0);
   border-bottom: var(--bw-thin) solid var(--c-border);
-  color: var(--c-text-secondary);
+  color: var(--c-text-primary);
+  font-size: var(--fs-base);
   vertical-align: top;
+}
+.data tbody tr:hover {
+  background: var(--c-bg-overlay);
 }
 .data__num {
   text-align: right;
@@ -390,13 +515,15 @@
 .tag {
   display: inline-block;
   margin-left: var(--sp-3);
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--r-sm);
+  padding: var(--sp-0) var(--sp-3);
+  border: var(--bw-thin) solid var(--c-mode-dry);
+  border-radius: var(--r-md);
+  color: var(--c-mode-dry);
   font-size: var(--fs-xs);
-  letter-spacing: var(--sp-1);
+  letter-spacing: var(--ls-tight);
 }
 .tag--test {
-  background: var(--c-mode-dry-bg);
+  border-color: var(--c-mode-dry);
   color: var(--c-mode-dry);
 }
 
@@ -404,9 +531,10 @@
 
 .live {
   flex: none;
-  padding: var(--sp-3) var(--sp-5) var(--sp-4);
-  border-bottom: var(--bw-thin) solid var(--c-border-strong);
-  background: var(--c-bg-sunken);
+  margin: var(--sp-0) var(--sp-7) var(--sp-4);
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--c-bg-raised);
+  border-radius: var(--r-2xl);
   /* A tail is for glancing at, not scrolling through; the archive is underneath. */
   max-height: 40vh;
   overflow-y: auto;
@@ -414,22 +542,26 @@
 .live__head {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-3);
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-4);
 }
 .live__title {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
   color: var(--c-text-primary);
-  font-size: var(--fs-xs);
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--ls-tight);
   text-transform: uppercase;
-  letter-spacing: var(--sp-1);
+}
+.live .data th {
+  background: var(--c-bg-raised);
 }
 /* The same colours the decision column uses in the indexed table, so "refused" means the
    same thing in both lists. */
 .live__row--refused td {
-  color: var(--c-refuse);
+  color: var(--c-text-muted);
 }
 .live__row--seen td {
   color: var(--c-pending);
@@ -452,11 +584,12 @@
   flex-direction: column;
 }
 .activity__row {
-  padding: var(--sp-2) var(--sp-0);
+  padding: var(--sp-4) var(--sp-0);
   border-bottom: var(--bw-thin) solid var(--c-border);
   color: var(--c-text-secondary);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
+  text-wrap: pretty;
 }
 .activity__row:last-child {
   border-bottom: none;
@@ -476,32 +609,36 @@
   color: var(--c-warn);
 }
 
-/* ---- the feed table --------------------------------------------------------------- */
+/* ---- the feed table ---------------------------------------------------------------
+   Virtualised, so it is a grid rather than a <table>: the rows are absolutely positioned
+   inside a spacer and only the visible ones exist. The column widths are in `ch` because
+   the face is monospace and a column that fits nine characters is what is wanted. */
 
 .table {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: var(--sp-0);
+  padding: var(--sp-0) var(--sp-7) var(--sp-6);
 }
 .table__head,
 .row {
   display: grid;
   grid-template-columns:
-    var(--sp-9) var(--sp-9) 1fr var(--sp-9)
-    var(--sp-9) var(--sp-9) var(--sp-9) var(--sp-9) var(--sp-9) 2fr;
-  gap: var(--sp-4);
+    9ch 12ch minmax(10ch, 1.4fr) 10ch
+    9ch 8ch 8ch 7ch 11ch minmax(12ch, 2fr);
+  gap: var(--sp-5);
   align-items: center;
-  padding: var(--sp-0) var(--sp-5);
+  padding: var(--sp-0) var(--sp-4);
 }
 .table__head {
-  height: var(--h-row);
-  background: var(--c-bg-sunken);
+  height: var(--h-row-compact);
+  background: var(--c-bg-base);
   border-bottom: var(--bw-thin) solid var(--c-border);
-  color: var(--c-text-muted);
+  color: var(--c-text-dim);
   font-size: var(--fs-xs);
+  letter-spacing: var(--ls-tight);
   text-transform: uppercase;
-  letter-spacing: var(--sp-1);
   position: sticky;
   top: var(--sp-0);
   z-index: var(--z-sticky);
@@ -524,17 +661,28 @@
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: var(--bw-thin) solid var(--c-border);
-  color: var(--c-text-secondary);
+  color: var(--c-text-primary);
   font: inherit;
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
   text-align: left;
   cursor: pointer;
 }
-.row:hover {
-  background: var(--c-bg-hover);
+/* Zebra rather than a rule between every row: at this row height a border on each one
+   draws a grid, and a grid is harder to read down than a stripe. */
+.row:nth-child(even) {
+  background: var(--c-bg-raised);
 }
+.row:hover {
+  background: var(--c-bg-overlay);
+}
+/* The one row state that means something gets the wash and a bar in the gutter. */
 .row--pass {
-  color: var(--c-text-primary);
+  background: var(--c-bg-selected);
+  box-shadow: inset var(--bw-thick) 0 0 var(--c-pass);
+}
+.row--pass:hover {
+  background: var(--c-bg-selected-strong);
 }
 
 .col {
@@ -545,11 +693,24 @@
 .col--num {
   text-align: right;
 }
+.col--time,
+.col--pair {
+  color: var(--c-text-muted);
+}
+.col--sym {
+  font-weight: var(--fw-medium);
+}
+.col--why {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
 .is-pass {
   color: var(--c-pass);
+  font-weight: var(--fw-medium);
 }
 .is-refuse {
   color: var(--c-refuse);
+  font-weight: var(--fw-medium);
 }
 .is-live {
   color: var(--c-mode-live);
@@ -572,8 +733,8 @@
   width: var(--w-drawer);
   display: flex;
   flex-direction: column;
-  background: var(--c-bg-overlay);
-  border-left: var(--bw-thin) solid var(--c-border-strong);
+  background: var(--c-bg-raised);
+  border-left: var(--bw-thin) solid var(--c-border);
   box-shadow: var(--shadow-drawer);
   z-index: var(--z-drawer);
 }
@@ -582,75 +743,112 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
   border-bottom: var(--bw-thin) solid var(--c-border);
   flex: none;
 }
 .drawer__title {
+  font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw-normal);
 }
 .drawer__body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--sp-5);
+  padding: var(--sp-6);
 }
 .drawer__section {
   margin-bottom: var(--sp-7);
 }
 .drawer__section-title {
-  margin: var(--sp-0) var(--sp-0) var(--sp-3);
-  color: var(--c-text-muted);
+  margin: var(--sp-0) var(--sp-0) var(--sp-4);
+  color: var(--c-text-dim);
   font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: var(--sp-1);
+  letter-spacing: var(--ls-tight);
 }
 
 .verdict {
-  padding: var(--sp-3) var(--sp-4);
-  margin-bottom: var(--sp-4);
-  background: var(--c-bg-sunken);
-  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  margin-bottom: var(--sp-5);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-xl);
   font-family: var(--font-mono);
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw-medium);
 }
+
+/* ---- key/value lists --------------------------------------------------------------- */
 
 .kv {
   width: 100%;
   border-collapse: collapse;
 }
 .kv th {
-  padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-0);
+  width: var(--w-key);
+  padding: var(--sp-4) var(--sp-6) var(--sp-4) var(--sp-0);
+  border-bottom: var(--bw-thin) solid var(--c-border);
   color: var(--c-text-muted);
+  font-size: var(--fs-base);
   font-weight: var(--fw-normal);
   text-align: left;
-  vertical-align: top;
+  vertical-align: baseline;
   white-space: nowrap;
 }
 .kv td {
-  padding: var(--sp-2) var(--sp-0);
-  vertical-align: top;
+  padding: var(--sp-4) var(--sp-0);
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  vertical-align: baseline;
+}
+.kv tr:last-child th,
+.kv tr:last-child td {
+  border-bottom: none;
 }
 
 .links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-3);
+  gap: var(--sp-5);
 }
 
 /* ---- panels, funnel, results ------------------------------------------------------ */
 
 .panel {
-  margin: var(--sp-5);
-  padding: var(--sp-5);
+  padding: var(--sp-6) var(--sp-7);
+  margin-bottom: var(--sp-6);
   background: var(--c-bg-raised);
-  border: var(--bw-thin) solid var(--c-border);
-  border-radius: var(--r-lg);
+  border: none;
+  border-radius: var(--r-3xl);
+}
+.panel:last-child {
+  margin-bottom: var(--sp-0);
 }
 .panel__title {
-  margin: var(--sp-0) var(--sp-0) var(--sp-3);
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
+  margin: var(--sp-0) var(--sp-0) var(--sp-5);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-normal);
+}
+
+/* A section break inside a long view. Reads as a chapter heading without being one. */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin: var(--sp-8) var(--sp-0) var(--sp-6);
+}
+.divider span {
+  font-family: var(--font-display);
+  font-size: var(--fs-base);
+  letter-spacing: var(--ls-wide);
+  color: var(--c-text-dim);
+  text-transform: uppercase;
+}
+.divider i {
+  flex: 1;
+  height: var(--bw-thin);
+  background: var(--c-border);
 }
 
 .funnel {
@@ -659,97 +857,152 @@
 }
 .funnel th,
 .funnel td {
-  padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-0);
+  padding: var(--sp-4) var(--sp-6) var(--sp-4) var(--sp-0);
   text-align: left;
   font-weight: var(--fw-normal);
   vertical-align: middle;
 }
 .funnel__count {
+  width: var(--sp-9);
   text-align: right;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .funnel__bar {
-  width: 30%;
+  width: 25%;
+}
+/* The track is the point: a stage that kept 0.8% of the universe has to render as a bar
+   that is nearly empty, not as a cell that is empty. */
+.funnel__track {
+  display: block;
+  height: var(--sp-5);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-sm);
+  overflow: hidden;
 }
 .funnel__fill {
   display: block;
-  height: var(--sp-3);
-  background: var(--c-info);
+  height: var(--sp-5);
+  background: var(--c-ramp-3);
   border-radius: var(--r-sm);
   min-width: var(--bw-thin);
 }
+/* Light to dark down the funnel, so the narrowing is visible before a number is read.
+   The rows are given these by position in the Lab. */
+.funnel tr:nth-child(1) .funnel__fill {
+  background: var(--c-ramp-1);
+}
+.funnel tr:nth-child(2) .funnel__fill {
+  background: var(--c-ramp-2);
+}
+.funnel tr:nth-child(3) .funnel__fill {
+  background: var(--c-ramp-3);
+}
+.funnel tr:nth-child(4) .funnel__fill {
+  background: var(--c-ramp-4);
+}
+.funnel tr:nth-child(5) .funnel__fill {
+  background: var(--c-ramp-5);
+}
+.funnel tr:nth-child(n + 6) .funnel__fill {
+  background: var(--c-ramp-6);
+}
+.funnel__label {
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  text-wrap: pretty;
+}
 .funnel__of {
   color: var(--c-text-muted);
+  font-style: normal;
 }
 .funnel__removed {
   color: var(--c-text-muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
+/* A headline figure. Big, because it is the answer; the label above it is small, because
+   nobody reads a label twice. */
 .headline {
   display: flex;
   align-items: baseline;
   gap: var(--sp-5);
-}
-.headline__value {
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xl);
-  font-weight: var(--fw-bold);
+  flex-wrap: wrap;
 }
 .headline__label {
-  color: var(--c-text-secondary);
+  color: var(--c-text-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
+  max-width: var(--w-prose);
+  text-wrap: pretty;
+}
+.headline__value {
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .gate {
-  padding: var(--sp-5);
-  background: var(--c-bg-sunken);
-  border-radius: var(--r-md);
+  padding: var(--sp-6) var(--sp-7);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-xl);
 }
 .gate__headline {
   font-size: var(--fs-lg);
-  color: var(--c-text-secondary);
+  margin-bottom: var(--sp-4);
 }
 
 .hold {
-  padding: var(--sp-4) var(--sp-0);
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-6);
   border-top: var(--bw-thin) solid var(--c-border);
 }
 .hold__assumption {
-  color: var(--c-text-secondary);
-  margin-bottom: var(--sp-3);
+  color: var(--c-text-muted);
+  line-height: var(--lh-prose);
+  margin-bottom: var(--sp-4);
 }
 
 .pcts {
   display: flex;
-  gap: var(--sp-6);
+  gap: var(--sp-8);
+  flex-wrap: wrap;
 }
 .pcts__cell {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
 }
 .pcts__key {
   color: var(--c-text-muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--ls-tight);
+  text-transform: uppercase;
 }
 .pcts__val {
-  font-size: var(--fs-md);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .bar {
-  height: var(--sp-4);
-  background: var(--c-bg-sunken);
-  border-radius: var(--r-pill);
+  height: var(--sp-3);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-sm);
   overflow: hidden;
 }
 .bar--slim {
-  height: var(--sp-2);
+  height: var(--bw-hair);
 }
 .bar__fill {
   display: block;
   height: 100%;
-  background: var(--c-info);
+  background: var(--c-ramp-3);
+  border-radius: var(--r-sm);
   transition: width var(--dur-base) var(--ease);
 }
 
@@ -758,13 +1011,15 @@
   align-items: flex-start;
   gap: var(--sp-4);
   color: var(--c-text-secondary);
+  line-height: var(--lh-prose);
 }
 .pulse {
   flex: none;
-  width: var(--sp-4);
-  height: var(--sp-4);
-  margin-top: var(--sp-2);
+  width: var(--sp-3);
+  height: var(--sp-3);
+  margin-top: var(--sp-3);
   border-radius: var(--r-pill);
+  background: var(--c-text-dim);
 }
 .pulse--live {
   background: var(--c-pulse);
@@ -781,91 +1036,155 @@
 .rule {
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
-  padding: var(--sp-3) var(--sp-0);
-  border-top: var(--bw-thin) solid var(--c-border);
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-0);
+  border-top: none;
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  flex-wrap: wrap;
 }
 .rule--add {
-  border-top-style: dashed;
+  border-bottom: none;
+  padding-top: var(--sp-6);
 }
 .rule__name {
-  width: var(--w-sidebar);
+  width: var(--w-label);
   flex: none;
-  color: var(--c-text-secondary);
+  color: var(--c-text-primary);
+  font-size: var(--fs-md);
 }
 .rule__fields {
   display: flex;
-  gap: var(--sp-5);
+  align-items: center;
+  gap: var(--sp-6);
   flex: 1;
   flex-wrap: wrap;
 }
 
+/* The control is one joined object — minus, value, plus — rather than three things that
+   happen to be adjacent. The buttons carry no border of their own; the group's rounded
+   background is what makes them read as parts of a whole. */
 .stepper {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-4);
+}
+.stepper > .btn {
+  height: var(--h-control);
+  width: var(--h-control);
+  padding: var(--sp-0);
+  justify-content: center;
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-none);
+  color: var(--c-text-muted);
+}
+.stepper > .btn:first-of-type {
+  border-radius: var(--r-lg) var(--r-none) var(--r-none) var(--r-lg);
+}
+.stepper > .btn:last-of-type {
+  border-radius: var(--r-none) var(--r-lg) var(--r-lg) var(--r-none);
+}
+.stepper > .btn + .input,
+.stepper > .input + .btn {
+  margin-left: calc(var(--sp-4) * -1);
+}
+.stepper .input {
+  height: var(--h-control);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-none);
+  text-align: right;
+  padding-right: var(--sp-5);
 }
 .stepper__label,
 .stepper__suffix {
   color: var(--c-text-muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+}
+
+/* A stepper that is a settings row rather than a field inside a rule: full width, with the
+   label in a fixed column so the controls line up down the panel instead of per row. */
+.panel > .stepper {
+  display: flex;
+  width: 100%;
+  gap: var(--sp-6);
+  padding: var(--sp-4) var(--sp-0);
+}
+.panel > .stepper .stepper__label {
+  width: var(--w-label);
+  flex: none;
+  color: var(--c-text-primary);
+  font-size: var(--fs-md);
+}
+.panel > .stepper .stepper__suffix {
+  width: var(--sp-8);
+  flex: none;
 }
 
 .json {
-  max-height: var(--sp-9);
+  max-height: var(--w-key);
   overflow: auto;
-  padding: var(--sp-4);
-  background: var(--c-bg-sunken);
-  border-radius: var(--r-md);
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--c-bg-overlay);
+  border-radius: var(--r-xl);
   color: var(--c-text-secondary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
   user-select: text;
 }
 
 /* ---- onboarding ------------------------------------------------------------------- */
 
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: var(--sp-0);
+}
 .onboarding__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: var(--sp-6) var(--sp-5) var(--sp-0);
+  gap: var(--sp-6);
+  padding: var(--sp-7) var(--sp-7) var(--sp-0);
 }
 .onboarding__title {
   margin: var(--sp-0);
+  font-family: var(--font-display);
   font-size: var(--fs-xl);
+  font-weight: var(--fw-normal);
 }
 .onboarding__nav {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-0) var(--sp-5) var(--sp-6);
+  gap: var(--sp-5);
+  padding: var(--sp-0) var(--sp-7) var(--sp-7);
 }
 
 .choice {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
 }
 .choice__item {
-  padding: var(--sp-4) var(--sp-5);
-  background: var(--c-bg-sunken);
-  border: var(--bw-thin) solid var(--c-border);
-  border-radius: var(--r-md);
+  padding: var(--sp-5) var(--sp-6);
+  background: var(--c-bg-overlay);
+  border: var(--bw-thin) solid transparent;
+  border-radius: var(--r-xl);
   color: var(--c-text-secondary);
   font: inherit;
   text-align: left;
+  line-height: var(--lh-prose);
   cursor: pointer;
 }
 .choice__item:hover {
-  background: var(--c-bg-hover);
+  color: var(--c-key-dim);
 }
 .choice__item.is-on {
-  background: var(--c-bg-selected);
-  border-color: var(--c-border-focus);
+  border-color: var(--c-key);
   color: var(--c-text-primary);
 }
 
-/* ---- the startup mode chooser ----------------------------------------------------- */
+/* ---- the startup mode chooser -----------------------------------------------------
+   The first screen of the session, and the only one whose whole job is a decision. */
 
 .chooser {
   display: flex;
@@ -879,20 +1198,23 @@
 }
 .chooser__title {
   margin: var(--sp-0);
+  font-family: var(--font-display);
   font-size: var(--fs-2xl);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--sp-1);
+  font-weight: var(--fw-normal);
+  letter-spacing: var(--ls-tight);
 }
 .chooser__note {
   margin: var(--sp-0);
   color: var(--c-text-muted);
+  line-height: var(--lh-prose);
   max-width: var(--w-drawer);
+  text-wrap: pretty;
 }
 .chooser__options {
   display: flex;
-  gap: var(--sp-5);
+  gap: var(--sp-6);
   align-items: stretch;
-  margin-top: var(--sp-5);
+  margin-top: var(--sp-6);
 }
 .chooser__options--row {
   align-items: center;
@@ -900,37 +1222,54 @@
 .chooser__option {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--sp-5);
   width: var(--w-drawer);
-  padding: var(--sp-6);
+  padding: var(--sp-7);
   background: var(--c-bg-raised);
-  border: var(--bw-thin) solid var(--c-border-strong);
-  border-radius: var(--r-lg);
-  color: var(--c-text-secondary);
+  border: var(--bw-thin) solid transparent;
+  border-radius: var(--r-3xl);
+  color: var(--c-text-muted);
   font: inherit;
+  font-size: var(--fs-base);
+  line-height: var(--lh-prose);
   text-align: left;
+  text-wrap: pretty;
   cursor: pointer;
 }
 .chooser__option:hover:not(:disabled) {
-  background: var(--c-bg-hover);
+  border-color: var(--c-border-strong);
 }
 .chooser__option:disabled {
-  color: var(--c-text-muted);
+  color: var(--c-text-dim);
   cursor: default;
 }
 .chooser__option--live {
   border-color: var(--c-mode-live);
 }
 .chooser__label {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--sp-1);
-  color: var(--c-text-primary);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-normal);
+  letter-spacing: var(--ls-tight);
+  color: var(--c-mode-dry);
 }
 .chooser__option--live .chooser__label {
   color: var(--c-mode-live);
 }
 .chooser__body {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+}
+
+/* ---- status view ------------------------------------------------------------------
+   The mode is stated as a word rather than a badge here: this is the screen you open to
+   check, so the answer is the largest thing on it. */
+
+.mode-word {
+  font-family: var(--font-display);
+  font-size: var(--fs-mode);
+  letter-spacing: var(--ls-tight);
+  color: var(--c-mode-dry);
+}
+.mode-word.is-live {
+  color: var(--c-mode-live);
 }

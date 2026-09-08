@@ -36,17 +36,32 @@ body {
   user-select: text;
 }
 
+/* A link is muted until pointed at, then it takes the key colour. Underlines are left
+   off: in a monospace terminal they read as a text-mode artefact rather than as emphasis. */
 a {
   color: var(--c-text-link);
   text-decoration: none;
 }
 a:hover {
-  text-decoration: underline;
+  color: var(--c-key-dim);
 }
 
 :focus-visible {
-  outline: var(--bw-thick) solid var(--c-border-focus);
+  outline: var(--bw-thin) solid var(--c-border-focus);
   outline-offset: var(--sp-1);
+}
+
+/* The scrollbar is part of the chrome in a window with this much scrolling in it. */
+::-webkit-scrollbar {
+  width: var(--sp-5);
+  height: var(--sp-5);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: var(--r-md);
 }
 
 .shell {

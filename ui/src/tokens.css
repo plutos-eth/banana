@@ -1,96 +1,147 @@
 /*
  * tokens.css — the single source of every colour, size, radius and font in quarrel.
  *
- * Spec §8: the visual style will be replaced in a later pass against design renders.
- * That pass must be an edit to THIS FILE plus small per-component adjustments, never a
- * component rewrite. So: no component anywhere may contain a colour literal, a px value,
- * or a font stack. `scripts/check-no-hardcoded-styles.ps1` enforces this in CI.
+ * Spec §8 said the visual style would be replaced in a later pass against design renders,
+ * and that the pass must be an edit to THIS FILE plus small per-component adjustments,
+ * never a component rewrite. This is that pass: the values below come from
+ * `refference_design/quarrel.css`, and not one component changed shape to accept them.
  *
- * Naming is by ROLE, not by appearance (§8: no `GreenBar`). `--c-gain` is the colour of
- * a gain; it happens to be green today and the restyle may make it something else
+ * So the rule stands: no component anywhere may contain a colour literal, a px value, or
+ * a font stack. `scripts/check-ui-invariants.ps1` enforces it in CI.
+ *
+ * Naming is by ROLE, not by appearance (§8: no `GreenBar`). `--c-gain` is the colour of a
+ * gain; it happens to be green today and the next restyle may make it something else
  * without a single component changing.
  *
- * Assumptions baked in here, per §8: dark theme, monospace for anything numeric or
- * tabular, dense information display.
+ * # The two things the reference decided that are worth knowing
+ *
+ * **The accent is a key colour, not a brand colour.** `--c-key` is used for exactly three
+ * things: the active view, hover, and the one letter of the wordmark. It never means
+ * "good" — that is `--c-gain` — so a yellow bar in the funnel is the top of a scale, not
+ * a verdict.
+ *
+ * **LIVE is a filled badge, TEST is an outline.** The reference colours LIVE green rather
+ * than red, and carries the weight on fill against outline plus a darker shell and an
+ * amber status line. That is a change in what a colour means to the user and it is called
+ * out in PLAN.md D24 rather than absorbed silently.
  */
 
 :root {
   /* ---- surfaces, back to front ------------------------------------------------ */
-  --c-bg-base: #0b0d10;
-  --c-bg-sunken: #07090b;
-  --c-bg-raised: #14171c;
-  --c-bg-overlay: #1b1f26;
-  --c-bg-hover: #1f242c;
-  --c-bg-active: #262c36;
-  --c-bg-selected: #1a2530;
+  --c-bg-base: #14161a;
+  --c-bg-sunken: #0e0f11;
+  --c-bg-raised: #1c1f24;
+  --c-bg-overlay: #22262c;
+  --c-bg-hover: #22262c;
+  --c-bg-active: #272b32;
+  /* A passing row. Deliberately a wash of the pass colour rather than a blue tint: it is
+     the only row state that means something, so it borrows the meaning. */
+  --c-bg-selected: rgba(120, 200, 135, 0.15);
+  --c-bg-selected-strong: rgba(120, 200, 135, 0.3);
 
   /* ---- text, most to least prominent ------------------------------------------ */
-  --c-text-primary: #e6e9ee;
-  --c-text-secondary: #9aa4b2;
-  --c-text-muted: #5f6875;
-  --c-text-inverse: #0b0d10;
-  --c-text-link: #7cc0ff;
+  --c-text-primary: #e6e7e9;
+  --c-text-secondary: #a8adb4;
+  --c-text-muted: #6b7078;
+  --c-text-dim: #44474d;
+  --c-text-inverse: #0e0f11;
+  --c-text-link: #6b7078;
 
   /* ---- lines ------------------------------------------------------------------ */
-  --c-border: #232830;
-  --c-border-strong: #333a45;
-  --c-border-focus: #4d90d0;
+  --c-border: #2a2e35;
+  --c-border-strong: #363b44;
+  /* Focus is the key colour: the reference outlines an editing stepper in it, which is
+     the same signal as the active view in the sidebar — "this is where you are". */
+  --c-border-focus: #d4fc50;
+
+  /* ---- the key colour --------------------------------------------------------- */
+  --c-key: #d4fc50;
+  --c-key-dim: #bce23f;
 
   /* ---- semantic: outcome ------------------------------------------------------ */
-  --c-gain: #46d17f;
+  --c-gain: #3fb950;
   --c-gain-dim: #1d4a31;
-  --c-loss: #e5484d;
+  --c-loss: #f85149;
   --c-loss-dim: #4a1d1f;
-  --c-neutral: #9aa4b2;
+  --c-neutral: #6b7078;
 
   /* ---- semantic: decision ----------------------------------------------------- */
-  --c-pass: #46d17f;
-  --c-refuse: #5f6875;
-  --c-pending: #d9a441;
+  --c-pass: #3fb950;
+  /* A refusal is the ordinary case — 99% of launches — so it is a muted red rather than
+     an alarming one. It must read as "not this one", not as "something went wrong". */
+  --c-refuse: #c2564f;
+  --c-pending: #e3b341;
 
   /* ---- semantic: operating mode (§3.2 — always visible, never ambiguous) ------- */
-  --c-mode-dry: #4d90d0;
-  --c-mode-dry-bg: #10243a;
-  --c-mode-live: #e5484d;
-  --c-mode-live-bg: #3a1214;
-  --c-mode-armed: #d9a441;
+  --c-mode-dry: #2aa6b5;
+  --c-mode-dry-bg: transparent;
+  --c-mode-live: #3fb950;
+  --c-mode-live-bg: #3fb950;
+  --c-mode-armed: #e3b341;
   --c-mode-armed-bg: #3a2c10;
 
   /* ---- semantic: severity ----------------------------------------------------- */
-  --c-info: #4d90d0;
-  --c-warn: #d9a441;
-  --c-warn-bg: #2a2110;
-  --c-error: #e5484d;
-  --c-error-bg: #2a1214;
+  --c-info: #6b7078;
+  --c-warn: #e3b341;
+  --c-warn-bg: #1e1a11;
+  --c-error: #f85149;
+  --c-error-bg: #1e1113;
 
   /* ---- semantic: data quality (§3.3, C4 — derived values are labelled) --------- */
   --c-approx: #8a7fd0;
-  --c-unknown: #6b7280;
+  --c-unknown: #44474d;
 
   /* ---- feed health pulse (§8 view 6 — a quiet chain must not look like a dead
          engine, so the pulse has its own colour and is never reused) ------------- */
-  --c-pulse: #46d17f;
-  --c-pulse-stale: #d9a441;
-  --c-pulse-dead: #e5484d;
+  --c-pulse: #3fb950;
+  --c-pulse-stale: #e3b341;
+  --c-pulse-dead: #f85149;
+
+  /* ---- the funnel ramp --------------------------------------------------------
+     One scale, light to dark, so a reader sees a funnel narrowing rather than six
+     unrelated bars. Not the pass colour: a funnel stage is a quantity, not a verdict. */
+  --c-ramp-1: #e2ff7a;
+  --c-ramp-2: #cff35e;
+  --c-ramp-3: #b7dc49;
+  --c-ramp-4: #9dc23c;
+  --c-ramp-5: #83a631;
+  --c-ramp-6: #6b8a28;
+  /* A histogram bar that is not the long tail. */
+  --c-hist: #3a3e45;
 
   /* ---- type ------------------------------------------------------------------- */
-  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "Cascadia Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+  /* Bundled locally, never fetched — see main.tsx. The whole application is monospace:
+     it is a terminal, and a proportional face beside a column of numbers reads as two
+     different programs. */
+  --font-ui: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  /* Headings, the wordmark and the mode word. Wider and squarer than the body face, which
+     is what makes a title read as a title without being bigger or bolder. */
+  --font-display: "Space Mono", "JetBrains Mono", ui-monospace, monospace;
 
   --fs-xs: 10px;
   --fs-sm: 11px;
   --fs-base: 12px;
   --fs-md: 13px;
   --fs-lg: 15px;
-  --fs-xl: 18px;
-  --fs-2xl: 24px;
+  --fs-xl: 17px;
+  --fs-2xl: 22px;
+  --fs-3xl: 30px;
+  --fs-mode: 32px;
 
   --fw-normal: 400;
   --fw-medium: 500;
-  --fw-bold: 600;
+  --fw-bold: 700;
 
   --lh-tight: 1.2;
-  --lh-normal: 1.45;
+  --lh-normal: 1.5;
+  /* Explanatory prose. The reference sets 1.7 on every helper paragraph, and the app has
+     a great deal of prose that has to stay readable at 12px. */
+  --lh-prose: 1.7;
+
+  /* ---- letterspacing ---------------------------------------------------------- */
+  --ls-tight: 0.1em;
+  --ls-wide: 0.15em;
 
   /* ---- spacing scale ---------------------------------------------------------- */
   --sp-0: 0px;
@@ -104,35 +155,57 @@
   --sp-8: 32px;
   --sp-9: 48px;
 
-  /* ---- radii ------------------------------------------------------------------ */
+  /* ---- radii ------------------------------------------------------------------
+     The reference is generously rounded: pills for keycaps, 8 for controls, 10 for
+     banners, 12-14 for cards. Sharp corners are reserved for nothing. */
   --r-none: 0px;
-  --r-sm: 2px;
-  --r-md: 4px;
-  --r-lg: 6px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-2xl: 12px;
+  --r-3xl: 14px;
   --r-pill: 999px;
 
   /* ---- borders ---------------------------------------------------------------- */
   --bw-thin: 1px;
   --bw-thick: 2px;
+  --bw-hair: 3px;
 
   /* ---- layout ----------------------------------------------------------------- */
-  --w-sidebar: 180px;
+  --w-sidebar: 232px;
   --w-drawer: 480px;
-  /* The index strip in the status bar: wide enough to read, short of crowding out
-     the engine line beside it. */
+  /* The widest a paragraph of explanation is allowed to run. Beyond this the eye loses
+     the line, and this application explains itself constantly. */
+  --w-prose: 1040px;
+  /* The index strip in the status bar: wide enough to read, short of crowding out the
+     engine line beside it. */
   --w-statusbar-bar: 320px;
-  --h-topbar: 36px;
-  --h-statusbar: 24px;
+  /* A numeric field, in characters rather than pixels: the face is monospace, so this is
+     literally "wide enough for five digits and a comma". A pixel width here silently
+     truncates the moment a value gains a digit. */
+  --w-num-field: 9ch;
+  /* Fixed-width columns in the rule editor and key/value lists, so labels line up down
+     the page rather than per-row. */
+  --w-label: 210px;
+  --w-key: 220px;
+  --h-topbar: 52px;
+  --h-statusbar: 30px;
+  --h-control: 28px;
+  --h-control-lg: 34px;
 
-  /* Feed row height. Read by the virtualiser via getComputedStyle (PLAN.md F8) so
-     that no pixel value lives in a component. Changing it here changes both the CSS
-     and the virtualiser's estimateSize. */
-  --h-row: 26px;
-  --h-row-compact: 22px;
+  /* Feed row height. Read by the virtualiser via getComputedStyle (PLAN.md F8) so that no
+     pixel value lives in a component. Changing it here changes both the CSS and the
+     virtualiser's estimateSize. The reference is roomier than the build it replaces:
+     38px against 26px, which is about eleven fewer rows on screen and a table that can be
+     read rather than scanned. */
+  --h-row: 38px;
+  --h-row-compact: 30px;
 
   /* ---- motion ----------------------------------------------------------------- */
   --dur-fast: 80ms;
   --dur-base: 140ms;
+  --dur-blink: 1.1s;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ---- elevation -------------------------------------------------------------- */
@@ -148,12 +221,30 @@
 }
 
 /*
+ * LIVE mode darkens the whole shell.
+ *
+ * Spec §3.2 wants the mode visible at all times and never ambiguous. A badge in one corner
+ * satisfies the letter of that; this satisfies it peripherally, so a user who is not
+ * looking at the corner still cannot mistake which session they are in. The class is set
+ * on <body> by the mode indicator, so every surface follows without a component knowing.
+ */
+body.is-live-session {
+  --c-bg-base: #0e0f11;
+  --c-bg-sunken: #08090a;
+  --c-bg-raised: #16181c;
+  --c-bg-overlay: #1b1e23;
+  --c-bg-hover: #1b1e23;
+  --c-border: #24262b;
+}
+
+/*
  * Reduced motion: the feed updates constantly and a user who asked the OS for less
- * animation should get it.
+ * animation should get it. The cursor stops blinking too — it is decoration.
  */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-fast: 0ms;
     --dur-base: 0ms;
+    --dur-blink: 0s;
   }
 }

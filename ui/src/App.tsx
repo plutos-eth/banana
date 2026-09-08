@@ -45,6 +45,14 @@ export function App() {
     void loadStrategy();
   }, [refreshStatus, loadStrategy]);
 
+  // A live session darkens the whole shell (§3.2). The class goes on <body> so every
+  // surface follows from tokens.css without a single component knowing which mode it is
+  // in — and so the signal is peripheral, visible to someone who is not looking at the
+  // badge in the corner.
+  useEffect(() => {
+    document.body.classList.toggle("is-live-session", status?.can_spend === true);
+  }, [status?.can_spend]);
+
   // The index runs in the backend and outlives any view (spec §4.2), so the shell is what
   // listens. Subscribing here rather than in the Index view is what lets the progress bar
   // survive a view change, and what makes a running index visible from every screen.
@@ -112,7 +120,14 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="topbar__brand">quarrel</span>
+        {/* One letter of the wordmark in the key colour, and a cursor after it. The
+            application is a terminal; this is the only place it says so out loud. */}
+        <span className="topbar__brand">
+          quarre<em>l</em>
+        </span>
+        <span className="topbar__cursor" aria-hidden="true">
+          ▋
+        </span>
         <ModeBadge status={status} />
         <span className="topbar__spacer" />
         {!hasBackend() && (
@@ -172,19 +187,18 @@ export function App() {
           five-minute-old failure hides a running index and a running engine — which is
           how you end up staring at a screen that looks idle while it is working. */}
       <footer className="statusbar">
-        {error && (
+        {/* The sentence reads from the left edge, like a terminal. Only an error takes
+            that position from it — and the live strip keeps the right, so a five-minute-old
+            failure can never hide a running index or a running engine. */}
+        {error ? (
           <button type="button" className="statusbar__error" onClick={() => setError(null)}>
             {error} — click to dismiss
           </button>
+        ) : (
+          <span className="statusbar__note">{status?.engine ?? "starting"}</span>
         )}
         <span className="topbar__spacer" />
-        {indexProgress ? (
-          <IndexPulse />
-        ) : status?.engine_running ? (
-          <EnginePulse />
-        ) : (
-          !error && <span className="statusbar__note">{status?.engine ?? "starting"}</span>
-        )}
+        {indexProgress ? <IndexPulse /> : status?.engine_running ? <EnginePulse /> : null}
       </footer>
     </div>
   );
