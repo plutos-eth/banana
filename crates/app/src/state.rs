@@ -70,6 +70,15 @@ impl AppState {
     /// A process with no mode yet. The user picks one on the startup screen.
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
         let data_dir = data_dir.as_ref().to_path_buf();
+        // Made here rather than at the first write. A first-run user is told in the top
+        // bar where their data lives; being told about a directory that does not exist
+        // yet is a small lie, and every writer below would otherwise have to create it
+        // separately and remember to.
+        //
+        // Ignored on failure: a read-only or unwritable location is a real problem, but
+        // it is one the first actual write reports with a path and a reason, which beats
+        // a panic before the window opens.
+        let _ = std::fs::create_dir_all(&data_dir);
         let strategy = load_strategy(&data_dir).unwrap_or_default();
         Self {
             data_dir,

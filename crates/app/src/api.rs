@@ -152,7 +152,7 @@ pub struct FeedRow {
     pub refusals: Vec<Refusal>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FeedPage {
     pub rows: Vec<FeedRow>,
     /// How many launches were read out of the store before filtering.
@@ -175,10 +175,20 @@ pub struct FeedQuery {
     pub limit: Option<usize>,
 }
 
+/// True when the only thing wrong is that nothing has been indexed yet.
+///
+/// A first run has no `history.db`, and every view that reads the store would otherwise
+/// open with a red error across the status bar — which says "this is broken" about a
+/// program that is working exactly as it should. The views each have an empty state that
+/// explains what to do instead; this is what lets them reach it.
+fn no_store_yet<T>(r: &Result<T>) -> bool {
+    matches!(r, Err(AppError::NoStore(_)))
+}
+
 pub fn feed(state: &AppState, q: &FeedQuery) -> Result<FeedPage> {
     let strategy = state.strategy();
     let cap = q.limit.unwrap_or(FEED_CAP).min(FEED_CAP);
-    state.with_history(|h| {
+    let page = state.with_history(|h| {
         let candidates = h.recent_candidates(cap)?;
         let scanned = candidates.len();
         let total = h.launch_count()?;
@@ -201,7 +211,13 @@ pub fn feed(state: &AppState, q: &FeedQuery) -> Result<FeedPage> {
             scanned,
             truncated: total as usize > scanned,
         })
-    })
+    });
+    // A first run has no store. That is the state the view's own empty message describes,
+    // so it must be allowed to reach it rather than being replaced by a red error bar.
+    if no_store_yet(&page) {
+        return Ok(FeedPage::default());
+    }
+    page
 }
 
 fn matches(r: &FeedRow, needle: &str) -> bool {
@@ -563,6 +579,18 @@ pub struct IndexStatus {
 pub fn index_status(state: &AppState) -> Result<IndexStatus> {
     let store = store_summary(state);
     let indexing = state.is_indexing();
+    // Nothing indexed yet is exactly what this view exists to fix, so it renders its
+    // coverage panel empty and its "no store yet" note rather than an error.
+    if !store.exists {
+        return Ok(IndexStatus {
+            store,
+            indexing,
+            phases: Vec::new(),
+            undecodable: 0,
+            bundled: 0,
+            migrated: 0,
+        });
+    }
     // Not `unwrap_or_default`: a view that silently reported zero undecodable launches
     // because the query failed would be indistinguishable from a clean index.
     let counts = state.with_history(|h| {

@@ -26,12 +26,16 @@ import { Empty } from "../components/Empty";
 import { Rules } from "./Rules";
 
 export function Lab() {
-  const { saved, setError } = useApp();
+  const { saved, setError, status } = useApp();
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [running, setRunning] = useState(false);
 
+  // A first run has no store, and asking the backend to backtest one is not a mistake
+  // worth an error bar — it is the state this view exists to send you out of.
+  const noStore = status !== null && !status.store.exists;
+
   const run = useCallback(async () => {
-    if (!hasBackend() || !saved) return;
+    if (!hasBackend() || !saved || noStore) return;
     setRunning(true);
     try {
       setResult(await api.backtest(saved));
@@ -41,7 +45,7 @@ export function Lab() {
     } finally {
       setRunning(false);
     }
-  }, [saved, setError]);
+  }, [saved, setError, noStore]);
 
   useEffect(() => {
     void run();
@@ -49,6 +53,16 @@ export function Lab() {
 
   if (!hasBackend()) {
     return <Empty title="No backend" note="Run the desktop app to backtest." />;
+  }
+  if (noStore) {
+    return (
+      <Empty
+        title="Nothing indexed yet"
+        note="The Lab reads a local index of chain history. Open the Index view and index a
+              window — the last 24 hours is the usual starting point — and the funnel, the
+              result and the rule editor all appear here."
+      />
+    );
   }
 
   return (

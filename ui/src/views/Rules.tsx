@@ -34,18 +34,22 @@ function asAllOf(cs: Condition[]): EntryFilter {
 }
 
 export function Rules() {
-  const { draft, dirty, setDraft, saveDraft, revertDraft, setError } = useApp();
+  const { draft, dirty, setDraft, saveDraft, revertDraft, setError, status } = useApp();
   const [live, setLive] = useState<PassCount | null>(null);
 
+  // The count comes from a backtest, so it needs an index. Without one the editor still
+  // works — you can write rules before you have data — it simply has no figure to show.
+  const noStore = status !== null && !status.store.exists;
+
   const recount = useCallback(async () => {
-    if (!hasBackend() || !draft) return;
+    if (!hasBackend() || !draft || noStore) return;
     try {
       setLive(await api.passCount(draft));
     } catch (e) {
       setError(e);
       setLive(null);
     }
-  }, [draft, setError]);
+  }, [draft, setError, noStore]);
 
   useEffect(() => {
     const t = setTimeout(() => void recount(), 150);
