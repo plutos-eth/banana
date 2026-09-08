@@ -189,6 +189,10 @@
      the page rather than per-row. */
   --w-label: 210px;
   --w-key: 220px;
+  /* The window's own titlebar, because the window is undecorated. */
+  --h-titlebar: 34px;
+  --w-winbtn: 42px;
+  --sz-dot: 8px;
   --h-topbar: 52px;
   --h-statusbar: 30px;
   --h-control: 28px;

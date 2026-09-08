@@ -15,11 +15,11 @@ import { events, hasBackend } from "./ipc";
 import { count, duration } from "./format";
 import { useApp, VIEWS } from "./store";
 import { ModeBadge } from "./components/ModeBadge";
+import { TitleBar } from "./components/TitleBar";
 import { Feed } from "./views/Feed";
 import { Positions } from "./views/Positions";
 import { Lab } from "./views/Lab";
 import { IndexView } from "./views/IndexView";
-import { Rules } from "./views/Rules";
 import { StatusView } from "./views/StatusView";
 import { Onboarding } from "./views/Onboarding";
 import { ChooseMode } from "./views/ChooseMode";
@@ -119,6 +119,7 @@ export function App() {
 
   return (
     <div className="app">
+      <TitleBar />
       <header className="topbar">
         {/* One letter of the wordmark in the key colour, and a cursor after it. The
             application is a terminal; this is the only place it says so out loud. */}
@@ -175,7 +176,6 @@ export function App() {
               {view === "positions" && <Positions />}
               {view === "lab" && <Lab />}
               {view === "index" && <IndexView />}
-              {view === "rules" && <Rules />}
               {view === "status" && <StatusView />}
             </>
           )}

@@ -22,6 +22,60 @@
   background: var(--c-bg-base);
 }
 
+/* The window's own titlebar. The whole strip is a drag region except the three controls,
+   which opt out of it — otherwise pressing one starts a drag instead. */
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--h-titlebar);
+  padding: var(--sp-0) var(--sp-0) var(--sp-0) var(--sp-6);
+  border-bottom: var(--bw-thin) solid var(--c-border);
+  flex: none;
+}
+.titlebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.titlebar__dot {
+  width: var(--sz-dot);
+  height: var(--sz-dot);
+  border-radius: var(--r-sm);
+  background: var(--c-border);
+}
+.titlebar__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-base);
+  letter-spacing: var(--ls-wide);
+  color: var(--c-text-muted);
+}
+.titlebar__controls {
+  display: flex;
+}
+.winbtn {
+  width: var(--w-winbtn);
+  height: var(--h-titlebar);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--c-text-muted);
+  font: inherit;
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+.winbtn:hover {
+  background: var(--c-bg-raised);
+  color: var(--c-key-dim);
+}
+/* Close is the one control that cannot be undone, so it is the one that changes colour. */
+.winbtn--close:hover {
+  background: var(--c-error);
+  color: var(--c-text-inverse);
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -727,7 +781,7 @@ body.is-live-session .statusbar__note {
 
 .drawer {
   position: fixed;
-  top: var(--h-topbar);
+  top: calc(var(--h-titlebar) + var(--h-topbar));
   right: var(--sp-0);
   bottom: var(--h-statusbar);
   width: var(--w-drawer);

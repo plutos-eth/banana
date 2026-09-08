@@ -12,6 +12,10 @@
  * * **Below thirty passing tokens there is nothing to render.** The backend sends a
  *   different variant, with no percentage field in it at all, so the numbers cannot be
  *   shown by accident — there is no value here to hide.
+ *
+ * The rule editor is the second half of this view rather than a screen of its own. A
+ * result and the rules that produced it are one thought, and the count beside the editor
+ * comes from the same backtest as the funnel above it, so the two cannot disagree.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +23,7 @@ import { api, hasBackend, type BacktestResult } from "../ipc";
 import { count, duration, hours, multiple } from "../format";
 import { useApp } from "../store";
 import { Empty } from "../components/Empty";
+import { Rules } from "./Rules";
 
 export function Lab() {
   const { saved, setError } = useApp();
@@ -64,7 +69,7 @@ export function Lab() {
       {!result ? (
         <Empty
           title={running ? "Running" : "No result"}
-          note="Index a window, then set rules in the Rules view."
+          note="Index a window from the Index view, then tune the rules below."
         />
       ) : (
         <>
@@ -75,6 +80,11 @@ export function Lab() {
           <Results result={result} />
         </>
       )}
+
+      {/* The rules that produced everything above. One screen, because a result and the
+          rule that narrowed it are one thought — and because the count in the editor and
+          the count in the funnel come from the same backtest and must not be read apart. */}
+      <Rules />
     </div>
   );
 }

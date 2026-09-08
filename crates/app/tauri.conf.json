@@ -18,7 +18,8 @@
         "minWidth": 1024,
         "minHeight": 640,
         "resizable": true,
-        "theme": "Dark"
+        "theme": "Dark",
+        "decorations": false
       }
     ],
     "security": {
@@ -32,8 +33,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
-    "icon": ["icons/icon.ico"],
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
     "copyright": "MIT licensed. Independent of pons, Uniswap and Robinhood.",
     "shortDescription": "Local sniper terminal and strategy backtester for pons v2.",
     "longDescription": "quarrel is a local desktop application. It watches pons v2 token launches, evaluates them against a transparent boolean filter, and lets the same filter be backtested against locally indexed on-chain history. Nothing leaves the machine except JSON-RPC to the endpoint the user configured."

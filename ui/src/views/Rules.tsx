@@ -1,20 +1,26 @@
 /**
- * View 5: the rules.
+ * The rule editor — the second half of the Strategy Lab, not a view of its own.
  *
  * Edits a `StrategyConfig` and writes it to the one `strategy.json` the Lab reads and the
- * sniper will arm from — spec §7.2 makes that identity the point of the product, so this
- * view has no model of its own and no translation step.
+ * sniper arms from — spec §7.2 makes that identity the point of the product, so this has
+ * no model of its own and no translation step.
  *
- * A live count comes from the same backtest the Lab runs, so the number beside the editor
- * and the number in the funnel cannot disagree. It is the whole reason the light half is
+ * # Why it lives under the Lab
+ *
+ * A result and the rules that produced it are one thought. Reading a funnel on one screen
+ * and editing the rule that narrowed it on another means holding a number in your head
+ * while you walk to it, and the number is the whole reason you are editing. The live count
+ * comes from the same backtest the Lab above it ran, so the figure beside the editor and
+ * the figure in the funnel cannot disagree — which is the whole reason the light half is
  * required to be fast (PLAN.md D2).
+ *
+ * It renders a fragment, not a view: the Lab owns the scroll container.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { api, hasBackend, type Condition, type EntryFilter, type PassCount } from "../ipc";
 import { count } from "../format";
 import { useApp } from "../store";
-import { Empty } from "../components/Empty";
 
 /** The flat AND the first UI exposes. The tree underneath is `All`/`Any`/`Not` already. */
 function conditions(f: EntryFilter): Condition[] {
@@ -47,7 +53,7 @@ export function Rules() {
   }, [recount]);
 
   if (!hasBackend() || !draft) {
-    return <Empty title="No backend" note="Run the desktop app to edit rules." />;
+    return null;
   }
 
   const cs = conditions(draft.entry_filter);
@@ -61,9 +67,13 @@ export function Rules() {
   const add = (c: Condition) => setDraft({ ...draft, entry_filter: asAllOf([...cs, c]) });
 
   return (
-    <div className="view view--scroll">
+    <>
+      <div className="divider">
+        <span>tune it</span>
+        <i />
+      </div>
+
       <div className="toolbar">
-        <span className="toolbar__title">Rules</span>
         <span className="toolbar__spacer" />
         {live && (
           <span className="toolbar__note mono">
@@ -168,7 +178,7 @@ export function Rules() {
         <h2 className="panel__title">Saved file</h2>
         <pre className="json mono">{JSON.stringify(draft, null, 2)}</pre>
       </section>
-    </div>
+    </>
   );
 }
 

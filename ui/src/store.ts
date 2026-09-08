@@ -1,8 +1,8 @@
 /**
  * Cross-view state.
  *
- * Only what more than one view needs: which view is showing, the strategy (the Rules
- * editor writes it, the Feed and the Lab read it), and the status the mode indicator is
+ * Only what more than one view needs: which view is showing, the strategy (the rule
+ * editor in the Lab writes it, the Feed reads it), and the status the mode indicator is
  * drawn from. Everything else is local to its view.
  *
  * The strategy here is a working copy. It becomes the saved `strategy.json` only when the
@@ -30,15 +30,14 @@ import {
  */
 export const ACTIVITY_CAP = 500;
 
-export type ViewId = "feed" | "positions" | "lab" | "index" | "rules" | "status";
+export type ViewId = "feed" | "positions" | "lab" | "index" | "status";
 
 export const VIEWS: { id: ViewId; label: string; key: string }[] = [
   { id: "feed", label: "Feed", key: "1" },
   { id: "positions", label: "Positions", key: "2" },
   { id: "lab", label: "Strategy Lab", key: "3" },
   { id: "index", label: "Index", key: "4" },
-  { id: "rules", label: "Rules", key: "5" },
-  { id: "status", label: "Status", key: "6" },
+  { id: "status", label: "Status", key: "5" },
 ];
 
 interface AppStore {
@@ -50,7 +49,7 @@ interface AppStore {
 
   /** Last saved strategy, as the backend holds it. */
   saved: StrategyConfig | null;
-  /** What the Rules editor is currently showing. Equal to `saved` when clean. */
+  /** What the rule editor is currently showing. Equal to `saved` when clean. */
   draft: StrategyConfig | null;
   dirty: boolean;
   setDraft: (c: StrategyConfig) => void;
